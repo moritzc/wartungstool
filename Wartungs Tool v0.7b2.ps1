@@ -140,10 +140,10 @@ $selectGETAD.Size = New-Object System.Drawing.Size (150,40)
 $selectGETAD.Text = 'Get AD Computers'
 $selectGETAD.Location = '330,40'
 $selectGETAD.Add_click({
-	$adcomputers = Get-ADComputer -Filter {OperatingSystem -Like "Windows 10*"} -Property * | Sort-Object OperatingSystemVersion -Descending
+	$adcomputers = Get-ADComputer -Filter {OperatingSystem -Like "Windows *"} -Property * | Sort-Object OperatingSystem -Descending
 	ForEach($pc in $adcomputers)
 	{
-		$guilabel3.Text += $pc.OperatingSystem + " " + $pc.OperatingSystemVersion + "`t" + "Name: " + $pc.Name  +  "`r`n" 
+		$guilabel3.Text += $pc.OperatingSystem + "`t" + $pc.OperatingSystemVersion + "`t" + "Name: " + $pc.Name  +  "`r`n" 
 	}
 }
 )
