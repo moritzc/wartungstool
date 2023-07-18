@@ -2,7 +2,7 @@
 Basic maintenance toolkit for Windows Servers
 
 # todo:
-Win 10/11 Unterschied aufzeigen mit $_.OperatingSystem zusätzlich zum Build mit OperatingSystemVersion
+
 
 # Changelog:
 v0.7b2
