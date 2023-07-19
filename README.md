@@ -1,10 +1,14 @@
 # wartungstool
-Basic maintenance toolkit for Windows Servers
+Simple GUI Anwendung zur Abfrage grundlegender Informationen auf Windows Servern
+
+# overview script
+Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen
+
 
 # todo:
 
 
-# Changelog:
+# Changelog Wartungstool:
 v0.7b2
 -Beta-Args behoben, Indikator im Window-Text hinzugefügt
 -beta Zeigt alle Funktionen an - auch unbenutzbare!
