@@ -1,3 +1,6 @@
+$days = 30
+if($args[0]){ $days = $args[0]}
+
 # Check server uptime
 $os = Get-WmiObject -Class Win32_OperatingSystem
 $uptime = (Get-Date) - $os.ConvertToDateTime($os.LastBootUpTime)
@@ -9,7 +12,7 @@ Write-Host "Storage Space Information:"
 foreach ($disk in $disks) {
     $freeSpace = [math]::Round($disk.FreeSpace / 1GB, 2)
     $totalSpace = [math]::Round($disk.Size / 1GB, 2)
-    Write-Host "Drive $($disk.DeviceID) $freeSpace GB free out of $totalSpace GB total"
+    Write-Host "Drive $($disk.DeviceID): $freeSpace GB free out of $totalSpace GB total"
 }
 
 # Get last installed updates
@@ -18,7 +21,7 @@ Write-Host "Last Installed Update: $($lastUpdate.Description) - $($lastUpdate.Ho
 
 # Check application and system event logs
 $logs = @("Application", "System")
-$startDate = (Get-Date).AddDays(-30)
+$startDate = (Get-Date).AddDays(-$days)
 foreach ($log in $logs) {
     Write-Host "Event Log: $log"
     $events = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$($startDate.ToUniversalTime().ToString('o'))'] and (Level=2 or Level=3)]]" | Group-Object -Property ID
