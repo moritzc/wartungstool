@@ -9,7 +9,7 @@ Write-Host "Storage Space Information:"
 foreach ($disk in $disks) {
     $freeSpace = [math]::Round($disk.FreeSpace / 1GB, 2)
     $totalSpace = [math]::Round($disk.Size / 1GB, 2)
-    Write-Host "Drive $($disk.DeviceID): $freeSpace GB free out of $totalSpace GB total"
+    Write-Host "Drive $($disk.DeviceID) $freeSpace GB free out of $totalSpace GB total"
 }
 
 # Get last installed updates
