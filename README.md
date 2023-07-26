@@ -1,8 +1,9 @@
 # wartungstool
 Simple GUI Anwendung zur Abfrage grundlegender Informationen auf Windows Servern
 
-# overview script
+# quickcheck script
 Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen
+./quickcheck.ps1 -{Tage} für beliebigen Zeitraum. Standardmäßig werden die letzten 2 Tage der Event Logs überprüft.
 
 
 # todo:
