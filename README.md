@@ -2,7 +2,8 @@
 Simple GUI Anwendung zur Abfrage grundlegender Informationen auf Windows Servern
 
 # quickcheck script
-Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen
+Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
+./quickcheck.ps1 -{tage} um einen anderen Zeitraum als die default 30 Tage zu wählen.
 
 # todo:
 
