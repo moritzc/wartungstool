@@ -3,9 +3,6 @@ Simple GUI Anwendung zur Abfrage grundlegender Informationen auf Windows Servern
 
 # quickcheck script
 Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen
-## usage:
-./quickcheck.ps1 Standardmäßig werden die letzten 2 Tage der Event Logs überprüft.
-
 
 # todo:
 
