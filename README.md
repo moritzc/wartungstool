@@ -9,6 +9,9 @@ Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
 
 
 # Changelog Wartungstool:
+v0.8b1
+-Snapshot Check (Erfordert Admin Rechte) für Hyper-V Umgebungen hinzugefügt. Prüft via Get-VMSnapshot ob Snapshots vorhanden sind und zusätzlich im Hyper-V Virtual Machines Ordner ob *.avhdx Dateien existieren.
+
 v0.7b2
 -Beta-Args behoben, Indikator im Window-Text hinzugefügt
 -beta Zeigt alle Funktionen an - auch unbenutzbare!
