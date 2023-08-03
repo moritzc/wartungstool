@@ -384,7 +384,7 @@ $selectWSUSErrors.Add_Click(
 $selectWsusreport= New-Object System.Windows.Forms.Button
 $selectWsusreport.Size = New-Object System.Drawing.Size (150,40)
 $selectWsusreport.Text = 'WSUS Quick Report'
-$selectWsusreport.Location = '650,90'
+$selectWsusreport.Location = '810,90'
 $selectWsusreport.Add_click({
 		#Report Popup
 $guiForm2 = New-Object System.Windows.Forms.Form
