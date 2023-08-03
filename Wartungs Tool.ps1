@@ -7,7 +7,6 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 }
 
 
-
 #Load System Windows Forms (PreReqs)  https://prosystech.nl/powershell-service-desk-ict-tool-gui/
 [reflection.assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
 [reflection.assembly]::LoadWithPartialName("Microsoft.UpdateServices.Administration") | out-null
@@ -25,6 +24,7 @@ $winversion = [int](Get-WmiObject -class Win32_OperatingSystem).BuildNumber
 #wsuscheck
 $wsuscheck = Get-WindowsFeature | Where-Object {$_.name -eq "UpdateServices"}
 $adcheck = Get-WindowsFeature | Where-Object {$_.name -eq "AD-Domain-Services"}
+$hvcheck = Get-WindowsFeature | Where-Object {$_.name -eq  "Hyper-V"}
 
 $network = [System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain()
 $hostname = hostname
@@ -32,7 +32,7 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool"
+$guiForm.Text = "Wartungstool v0.8"
 if($beta -eq 'beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
@@ -233,7 +233,47 @@ $selectEventlog.Add_click(
 	Show-EventLog
 })
 
+$selectHVCheck = New-Object System.Windows.Forms.Button
+$selectHVCheck.Size = New-Object System.Drawing.Size (150,40)
+$selectHVCheck.Text = 'Check-Snapshots'
+$selectHVCheck.Location = '650,40'
+$selectHVCheck.Add_click(
+{
+	try {
+    $snapshots = Get-VM | Get-VMSnapshot
+    if ($snapshots) {
+        $guilabel3.Text += $snapshots
+    } else {
+        $guilabel3.Text += "No Snapshots found `r`n"
+    }
 
+    $vmHost = Get-VMHost | Select-Object -ExpandProperty VirtualMachinePath
+    $vmFolderPath = $vmHost.TrimEnd('\')
+
+    $vmFolders = Get-ChildItem -Path $vmFolderPath -Recurse -Directory -ErrorAction Stop
+    $avhdxFilesFound = $false
+    foreach ($folder in $vmFolders) {
+        $avhdxFiles = Get-ChildItem -Path $folder.FullName -Recurse -Filter "*.avhdx" -File -ErrorAction Stop
+        if ($avhdxFiles) {
+            $avhdxFilesFound = $true
+            $guilabel3.Text += "AVHDX files found in VM folder: $($folder.FullName)`r`n"
+            foreach ($avhdxFile in $avhdxFiles) {
+                $guilabel3.Text += "AVHDX file: $($avhdxFile.FullName)`r`n"
+            }
+        }
+    }
+
+    if (!$avhdxFilesFound) {
+        $guilabel3.Text += "No AVHDX files found in any VM folder.`r`n"
+    }
+
+    return 0
+} catch {
+    $Errormsg = "`r`n Error(s): " + $_.Exception.Message
+    $guilabel3.Text += $Errormsg
+    return 1
+}
+})
 
 
 #TEMPORÄR
@@ -432,8 +472,6 @@ $guiform2.Controls.Add($checkbox1)
 $guiForm2.ShowDialog() 
 }
 )
-
-
 	
 	
 #Buttons platzieren
@@ -451,6 +489,10 @@ $guiForm.Controls.Add($selectWSUSErrors)
 $guiForm.Controls.Add($selectWSUSSync)
 }
 
+if($hvcheck.InstallState -eq "Installed")
+{
+	$guiForm.Controls.Add($selectHVCheck)
+}
 
 
 $guiForm.Controls.Add($selectClear)
