@@ -312,8 +312,9 @@ if ($events.Count -eq 0) {
             LastOccurrence = $lastOccurrence
         }
     }
-	$guilabel3.Text += "`nDFS Replication errors found!"
+	$guilabel3.Text += "`nDFS Replication errors found!`n"
     $eventOccurrences | Format-Table -Property ID, Count, FirstOccurrence, LastOccurrence -AutoSize
+	$guilabel3.Text += $eventOccurrences
 }
 })
 
