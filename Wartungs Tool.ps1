@@ -267,13 +267,56 @@ $selectHVCheck.Add_click(
         $guilabel3.Text += "No AVHDX files found in any VM folder.`r`n"
     }
 
-    return 0
+    #return 0
 } catch {
     $Errormsg = "`r`n Error(s): " + $_.Exception.Message
     $guilabel3.Text += $Errormsg
-    return 1
+    #return 1
 }
 })
+
+$selectDFSRCheck = New-Object System.Windows.Forms.Button
+$selectDFSRCheck.Size = New-Object System.Drawing.Size (150,40)
+$selectDFSRCheck.Text = 'Check DFSR Error'
+$selectDFSRCheck.Location = '650,90'
+$selectDFSRCheck.Add_click(
+{
+$eventIDs = 2212, 4012
+$currentDate = Get-Date
+$startDate = $currentDate.AddDays(-180)
+$events = @()
+try{
+foreach ($eventID in $eventIDs) {
+    $eventLogs = Get-WinEvent -FilterHashtable @{Logname='DFS Replication'; ID=$eventID; StartTime=$startDate; EndTime=$currentDate} -ErrorAction SilentlyContinue
+    $events += $eventLogs
+}
+}
+catch{
+	$Errormsg = "`r`nError(s): " + $_.Exception.Message
+	$guilabel3.Text += $Errormsg
+}
+
+if ($events.Count -eq 0) {
+    $guilabel3.Text += "`nNo DFS Replication events with IDs 2212 or 4012 were found in the last 180 days."
+} else {
+    $eventCounts = $events | Group-Object -Property ID -NoElement | Sort-Object -Property Count -Descending
+
+    $eventOccurrences = $events | Group-Object -Property ID | ForEach-Object {
+        $firstOccurrence = ($_.Group | Sort-Object -Property TimeCreated)[0].TimeCreated
+        $lastOccurrence = ($_.Group | Sort-Object -Property TimeCreated)[-1].TimeCreated
+
+        New-Object PSObject -Property @{
+            ID = $_.Name
+            Count = $_.Count
+            FirstOccurrence = $firstOccurrence
+            LastOccurrence = $lastOccurrence
+        }
+    }
+	$guilabel3.Text += "`nDFS Replication errors found!"
+    $eventOccurrences | Format-Table -Property ID, Count, FirstOccurrence, LastOccurrence -AutoSize
+}
+})
+
 
 
 #TEMPORÄR
@@ -502,6 +545,7 @@ if($adcheck.InstallState -eq "Installed")
 $guiForm.Controls.Add($selectGETAD)
 $guiForm.Controls.Add($selectSRVUP)
 $guiForm.Controls.Add($selectClientUP)
+$guiForm.Controls.Add($selectDFSRCheck)
 }
 $guiForm.Controls.Add($selectUpdatetimes)
 
@@ -515,6 +559,7 @@ $guiForm.Controls.Add($selectWSUSSync)
 $guiForm.Controls.Add($selectGETAD)
 $guiForm.Controls.Add($selectSRVUP)
 $guiForm.Controls.Add($selectClientUP)
+$guiForm.Controls.Add($selectHVCheck)
 }
 #Starting the GUI
 $guiForm.ShowDialog() 
