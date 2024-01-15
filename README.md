@@ -9,6 +9,10 @@ Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
 
 
 # Changelog Wartungstool:
+v0.9b1
+-Shrink WSUS Content: 
+  Declined Superseded Updates und führt einen Cleanup der unneeded Content Files durch
+
 v0.8b2
 -DFSR Replication Check für Event IDs 2212 und 4012
 
