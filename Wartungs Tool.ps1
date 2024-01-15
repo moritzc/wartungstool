@@ -32,7 +32,7 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.8b2"
+$guiForm.Text = "Wartungstool v0.9b1"
 if($beta -eq 'beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
@@ -297,7 +297,7 @@ catch{
 }
 
 if ($events.Count -eq 0) {
-    $guilabel3.Text += "`nNo DFS Replication events with IDs 2212 or 4012 were found in the last 180 days."
+    $guilabel3.Text += "`nNo DFS Replication events with IDs 2212 or 4012 were found in the last 180 days.`n"
 } else {
     $eventCounts = $events | Group-Object -Property ID -NoElement | Sort-Object -Property Count -Descending
 
@@ -312,11 +312,43 @@ if ($events.Count -eq 0) {
             LastOccurrence = $lastOccurrence
         }
     }
-	$guilabel3.Text += "`nDFS Replication errors found!`n"
+	$guilabel3.Text += "`r`nDFS Replication errors found!`n"
     $eventOccurrences | Format-Table -Property ID, Count, FirstOccurrence, LastOccurrence -AutoSize
 	$guilabel3.Text += $eventOccurrences
 }
 })
+
+$selectWSUSCleanup = New-Object System.Windows.Forms.Button
+$selectWSUSCleanup.Size = New-Object System.Drawing.Size (150,40)
+$selectWSUSCleanup.Text = 'Shrink WSUS Content'
+$selectWSUSCleanup.Location = '650,140'
+$selectWSUSCleanup.Add_click(
+{
+$guilabel3.Text += "`r`nSuche Superseded Updates`n"
+$supersededupdates = Get-WsusUpdate -Classification All -Approval Approved -Status InstalledOrNotApplicable | where {$_.update.IsSuperseded -eq 'True'}
+$anzahl = $supersededupdates.count
+$message = "$anzahl Superseded Updates gefunden. Updates ablehnen?"
+
+$result = [System.Windows.Forms.MessageBox]::Show($message, "Confirmation", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+
+if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+	$guilabel3.Text += "`r`nDeclining superseded updates`n"
+    $counter = 1
+		ForEach($update in $supersededupdates)
+		{
+		$update | Deny-WsusUpdate
+		Write-Progress -Activity "Declining Updates" -CurrentOperation $counter -PercentComplete (($counter / $anzahl)*100)
+		$counter++
+		}
+	$guilabel3.Text += "`r`n$anzahl Superseded Updates abgelehnt. `r`n Unneeded Content Files werden entfernt`r`n"
+	Get-WsusServer | Invoke-WsusServerCleanup -CleanupUnneededContentFiles
+	$guilabel3.Text += "`r`nWSUS Content verkleinert."
+} else {
+    $guilabel3.Text += "`r`nUpdates wurden nicht abgelehnt. `n"
+
+}
+}
+)
 
 
 
@@ -531,6 +563,7 @@ if($wsuscheck.InstallState -eq "Installed")
 $guiForm.Controls.Add($selectContentsize)
 $guiForm.Controls.Add($selectWSUSErrors)
 $guiForm.Controls.Add($selectWSUSSync)
+$guiForm.Controls.Add($selectWSUSCleanup)
 }
 
 if($hvcheck.InstallState -eq "Installed")
