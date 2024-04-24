@@ -32,7 +32,7 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.9b1"
+$guiForm.Text = "Wartungstool v0.9.0.1"
 if($beta -eq 'beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
@@ -64,9 +64,7 @@ $selectCMD.Text = 'Export to wtlog.txt'
 $selectCMD.Location = '10,40'
 $selectCMD.Add_Click({
 	$now = date
-	#$filename = $now.day+" wtlog.txt"
-	#+now.month+"."+now.year+" "+$now.hour+":"+$now.minute+":"+$now.second
-	$now = Get-Date -Format dd.MM.yyyy_HH-mm #| ForEach-Object { $_ -replace ":", "." }
+	$now = Get-Date -Format dd.MM.yyyy_HH-mm 
     $WTlog = "wtlog_$now.txt"
 	$guilabel3.Text | Out-File $WTlog
 	$notif = New-Object -ComObject Wscript.Shell
@@ -197,7 +195,7 @@ $selectUpdatetimes.Add_click({
 		$lastupdates = Get-HotFix | ?{$_.InstalledOn -gt ((Get-Date).AddDays(-40))} | sort installedon -desc
 		Foreach($updt in $lastupdates)
 		{
-			$guilabel3.Text += " Installdate: " + $updt.InstalledOn + " ID: " + $updt.HotFixID + " Type: " + $updt.Description + "`r`n"
+			$guilabel3.Text += "Installed on: " + $updt.InstalledOn + " ID: " + $updt.HotFixID + " Type: " + $updt.Description + "`r`n"
 		}
 }
 )
@@ -220,7 +218,7 @@ $selectWSUSSync.Add_click(
 	{
 			$guilabel3.Text += "`r`n"+"ID: " + $Fail.Id +"`r`n"+ "End Time: " + $Fail.EndTime + "`r`n"+"Error: " + $Fail.Error + "`r`n"
 	}
-	$guilabel3.Text += "`r`n" + "--------------------" + "`r`n"
+	$guilabel3.Text += "`r`n" + "--------------------" + "`r`n" + "`r`n"
 })
 
 
@@ -267,11 +265,10 @@ $selectHVCheck.Add_click(
         $guilabel3.Text += "No AVHDX files found in any VM folder.`r`n"
     }
 
-    #return 0
+
 } catch {
     $Errormsg = "`r`n Error(s): " + $_.Exception.Message
     $guilabel3.Text += $Errormsg
-    #return 1
 }
 })
 
@@ -327,7 +324,7 @@ $selectWSUSCleanup.Add_click(
 $guilabel3.Text += "`r`nSuche Superseded Updates`n"
 $supersededupdates = Get-WsusUpdate -Classification All -Approval Approved -Status InstalledOrNotApplicable | where {$_.update.IsSuperseded -eq 'True'}
 $anzahl = $supersededupdates.count
-$message = "$anzahl Superseded Updates gefunden. Updates ablehnen?"
+$message = "$anzahl superseded Updates gefunden. Updates ablehnen?"
 
 $result = [System.Windows.Forms.MessageBox]::Show($message, "Confirmation", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
 
@@ -340,7 +337,7 @@ if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
 		Write-Progress -Activity "Declining Updates" -CurrentOperation $counter -PercentComplete (($counter / $anzahl)*100)
 		$counter++
 		}
-	$guilabel3.Text += "`r`n$anzahl Superseded Updates abgelehnt. `r`n Unneeded Content Files werden entfernt`r`n"
+	$guilabel3.Text += "`r`n$anzahl Superseded Updates abgelehnt. `r`nUnneeded Content Files werden entfernt`r`n"
 	Get-WsusServer | Invoke-WsusServerCleanup -CleanupUnneededContentFiles
 	$guilabel3.Text += "`r`nWSUS Content verkleinert."
 } else {
@@ -430,7 +427,7 @@ $selectWSUSErrors.Add_Click(
 
 
   # Last updated
-  $outputText = " Last update".PadRight($HeaderChars) + ": " + ($computerFailed.LastUpdated).ToString()
+  $outputText = "Last update".PadRight($HeaderChars) + ": " + ($computerFailed.LastUpdated).ToString()
   $guiLabel3.Text += $outputText + "`r`n"
 
   # Failed Updates
@@ -455,8 +452,9 @@ $selectWSUSErrors.Add_Click(
 }	}
 )
 
-
-##Experimental
+########################################################################################################################
+#################################################Experimental###########################################################
+########################################################################################################################
 $selectWsusreport= New-Object System.Windows.Forms.Button
 $selectWsusreport.Size = New-Object System.Drawing.Size (150,40)
 $selectWsusreport.Text = 'WSUS Quick Report'
@@ -548,6 +546,10 @@ $guiform2.Controls.Add($checkbox1)
 $guiForm2.ShowDialog() 
 }
 )
+
+########################################################################################################################
+###############################################Experimental Ende########################################################
+########################################################################################################################
 	
 	
 #Buttons platzieren
