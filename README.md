@@ -6,9 +6,14 @@ Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
 ./quickcheck.ps1 -{tage} um einen anderen Zeitraum als die default 30 Tage zu wählen.
 
 # todo:
+- Code aufräumen
 
 
 # Changelog Wartungstool:
+v0.9.0.1
+- Typos behoben
+- Text Outputs angepasst
+
 v0.9b1
 -Shrink WSUS Content: 
   Declined Superseded Updates und führt einen Cleanup der unneeded Content Files durch
