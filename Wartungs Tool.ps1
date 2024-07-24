@@ -32,12 +32,12 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.9.0.1"
+$guiForm.Text = "Wartungstool v0.9.1.0"
 if($beta -eq 'beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
 }
-$guiForm.Size = New-Object System.Drawing.Size (880,710)
+$guiForm.Size = New-Object System.Drawing.Size (1000,710)
 
 $guiLabel = New-Object System.Windows.Forms.Label
 $guiLabel.Location = New-Object System.Drawing.Size (10,10)
@@ -49,12 +49,53 @@ $guiLabel.Font = New-Object System.Drawing.Font ("Verdana",9)
 #Textbox
 $guiLabel3 = New-Object system.windows.Forms.TextBox
 $guiLabel3.Location = New-Object System.Drawing.Size (10,400)
-$guiLabel3.Size = New-Object System.Drawing.size (850,450)
+$guiLabel3.Size = New-Object System.Drawing.size (950,450)
 $guiLabel3.Location = '10,200'
 $guiLabel3.ScrollBars = "Vertical"
 $guiLabel3.Multiline = $true
 $guiLabel3.Text = ""
 $guiLabel3.Font = New-Object System.Drawing.Font ("Verdana",9)
+
+#Functions - Über kurz oder lang sollen ALLE Funktionen in den Header migriert werden damit die Buttons nur den Call beinhalten.
+function eventcheck {
+    param (
+        [int]$days = 30
+    )
+
+    $logs = @("Application", "System")
+    $startDate = (Get-Date).AddDays(-$days)
+    $output = ""
+    
+    foreach ($log in $logs) {
+        $output += "`r`nEvent Log: $log`r`n"
+        $events = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$($startDate.ToUniversalTime().ToString('o'))'] and (Level=2 or Level=3)]]" | Group-Object -Property ID
+        $eventInfo = @()
+        foreach ($event in $events) {
+            $firstOccurrence = $event.Group | Sort-Object TimeCreated | Select-Object -First 1
+            $lastOccurrence = $event.Group | Sort-Object TimeCreated -Descending | Select-Object -First 1
+            $eventInfo += [PSCustomObject]@{
+                'ID'              = $event.Name
+                'Level'           = $firstOccurrence.LevelDisplayName
+                'FirstOccurrence' = $firstOccurrence.TimeCreated
+                'LastOccurrence'  = $lastOccurrence.TimeCreated
+                'Total'           = $event.Count
+                'Message'         = $firstOccurrence.Message.Split([Environment]::NewLine, 2)[0]
+            }
+        }
+			$eventInfo = $eventInfo | Sort-Object -Property Total -Descending
+		
+			$eventInfo | ForEach-Object {
+			$output +="`r`n--------------------------`r`n"
+			$output += "ID: $($_.ID), Level: $($_.Level), First Occurrence: $($_.FirstOccurrence), Last Occurrence: $($_.LastOccurrence), Total: $($_.Total), `r`nMessage: $($_.Message)`r`n"
+			}
+        $output += "`n"
+    }
+
+    return $output
+}
+
+
+
 
 #Buttons
 	
@@ -347,6 +388,14 @@ if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
 }
 )
 
+$selectEventoverview = New-Object System.Windows.Forms.Button
+$selectEventoverview.Size = New-Object System.Drawing.Size (150,40)
+$selectEventoverview.Text = 'Event Overview'
+$selectEventoverview.Location = '810,40'
+$selectEventoverview.Add_Click({
+    $output = eventcheck -days 30
+    $guiLabel3.Text += $output
+})
 
 
 #TEMPORÄR
@@ -559,6 +608,7 @@ $guiForm.Controls.Add($selectCMD)
 $guiForm.Controls.Add($selectCfree)
 $guiForm.Controls.Add($selectUptime)
 $guiForm.Controls.Add($selectEventlog)
+$guiForm.Controls.Add($selectEventoverview)
 #WSUS Features nur für WSUS Server
 if($wsuscheck.InstallState -eq "Installed")
 {
