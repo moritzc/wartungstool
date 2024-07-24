@@ -10,6 +10,10 @@ Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
 
 
 # Changelog Wartungstool:
+v0.9.1
+- Eventoverview
+  Gibt einen Überblick (sortiert nach Häufigkeit) der Application & System Events der letzten 30 Tage. (Error und Warning)
+  
 v0.9.0.1
 - Typos behoben
 - Text Outputs angepasst
