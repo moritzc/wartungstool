@@ -6,7 +6,7 @@ Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
 ./quickcheck.ps1 -{tage} um einen anderen Zeitraum als die default 30 Tage zu wählen.
 
 # todo:
-- Code aufräumen
+- Code aufräumen; Eventoverview ist bereits im function Format. Migration der anderen Funktionen ausstehend!
 
 
 # Changelog Wartungstool:
