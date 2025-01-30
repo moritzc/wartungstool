@@ -10,8 +10,11 @@ Knappe Zusammenfassung wichtiger Informationen und Event Logs Einträgen.
 
 
 # Changelog Wartungstool:
+v0.9.1.1
+- (erweitert) Eventoverview
+  Gesamtzahl der Events wird nun auch angezeigt.
 v0.9.1
-- Eventoverview
+- (new) Eventoverview
   Gibt einen Überblick (sortiert nach Häufigkeit) der Application & System Events der letzten 30 Tage. (Error und Warning)
   
 v0.9.0.1
