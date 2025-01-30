@@ -32,7 +32,7 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.9.1.0"
+$guiForm.Text = "Wartungstool v0.9.1.1"
 if($beta -eq 'beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
@@ -69,7 +69,9 @@ function eventcheck {
     foreach ($log in $logs) {
         $output += "`r`nEvent Log: $log`r`n"
         $events = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$($startDate.ToUniversalTime().ToString('o'))'] and (Level=2 or Level=3)]]" | Group-Object -Property ID
-        $eventInfo = @()
+        $count = $events.count
+		$output += "Total Events: $count `r`n"
+		$eventInfo = @()
         foreach ($event in $events) {
             $firstOccurrence = $event.Group | Sort-Object TimeCreated | Select-Object -First 1
             $lastOccurrence = $event.Group | Sort-Object TimeCreated -Descending | Select-Object -First 1
