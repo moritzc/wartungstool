@@ -68,8 +68,9 @@ function eventcheck {
     
     foreach ($log in $logs) {
         $output += "`r`nEvent Log: $log`r`n"
-        $events = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$($startDate.ToUniversalTime().ToString('o'))'] and (Level=2 or Level=3)]]" | Group-Object -Property ID
-        $count = $events.count
+		$rawevents = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$($startDate.ToUniversalTime().ToString('o'))'] and (Level=2 or Level=3)]]" 
+        $events = $rawevents | Group-Object -Property ID
+        $count = $rawevents.count
 		$output += "Total Events: $count `r`n"
 		$eventInfo = @()
         foreach ($event in $events) {
