@@ -33,11 +33,11 @@ A PowerShell script with a graphical user interface (GUI) for performing various
 
 **Usage:**
 ```powershell
-.\Wartungs Tool.ps1
+'.\Wartungs Tool.ps1'
 ```
 To run with experimental features enabled:
 ```powershell
-.\Wartungs Tool.ps1 -beta
+'.\Wartungs Tool.ps1' -beta
 ```
 
 ---
@@ -163,11 +163,11 @@ Ein PowerShell-Skript mit einer grafischen Benutzeroberfläche (GUI) zur Durchf�
 
 **Anwendung:**
 ```powershell
-.\Wartungs Tool.ps1
+'.\Wartungs Tool.ps1'
 ```
 Um das Skript mit aktivierten experimentellen Funktionen auszuführen:
 ```powershell
-.\Wartungs Tool.ps1 -beta
+'.\Wartungs Tool.ps1 -beta'
 ```
 
 ---
