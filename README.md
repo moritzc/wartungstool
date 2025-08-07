@@ -28,7 +28,7 @@ A PowerShell script with a graphical user interface (GUI) for performing various
 
 **Prerequisites:**
 - Windows Server with PowerShell.
-- The script must be run with **Administrator privileges**. It includes a self-elevation prompt if not run as admin.
+- The script must be run with **Administrator privileges** for some features. It includes a self-elevation prompt if not run as admin.
 - Some features require specific Windows Roles to be installed (e.g., WSUS, Active Directory Domain Services, Hyper-V). The script will automatically show/hide buttons based on installed roles.
 
 **Usage:**
@@ -158,7 +158,7 @@ Ein PowerShell-Skript mit einer grafischen Benutzeroberfl채che (GUI) zur Durchf�
 
 **Voraussetzungen:**
 - Windows Server mit PowerShell.
-- Das Skript muss mit **Administratorrechten** ausgef체hrt werden. Es enth채lt eine Abfrage zur Rechteerweiterung, falls es nicht als Administrator gestartet wird.
+- Das Skript muss f체r den vollen Funktionsumfang als **Administrator** ausgef체hrt werden. Es enth채lt eine Abfrage zur Rechteerweiterung, falls es nicht als Administrator gestartet wird. Bei Ablehnung f체hren manche Abfragen zu Fehlermeldungen.
 - Einige Funktionen erfordern die Installation bestimmter Windows-Rollen (z. B. WSUS, Active Directory Domain Services, Hyper-V). Das Skript zeigt die entsprechenden Schaltfl채chen automatisch an oder verbirgt sie, je nach installierten Rollen.
 
 **Anwendung:**
