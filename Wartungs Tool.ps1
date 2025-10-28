@@ -1,654 +1,704 @@
-#Self-Elevate
-If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
-    $ADMRequest = Read-Host -Prompt "You didn't run this script as an Administrator. Enter [Y] to execute as Admin"
-    If ($ADMRequest -eq "Y" )
-	{	Start-Process powershell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
-    Exit}
+#Requires -RunAsAdministrator
+
+# Self-elevation for non-admin sessions
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $admRequest = Read-Host -Prompt "You didn't run this script as an Administrator. Enter [Y] to execute as Admin"
+    if ($admRequest -eq 'Y') {
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+        exit
+    }
 }
 
+# Load required assemblies
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[void][Reflection.Assembly]::LoadWithPartialName('Microsoft.UpdateServices.Administration')
 
-#Load System Windows Forms (PreReqs)  https://prosystech.nl/powershell-service-desk-ict-tool-gui/
-[reflection.assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
-[reflection.assembly]::LoadWithPartialName("Microsoft.UpdateServices.Administration") | out-null
+param (
+    [string]$Beta
+)
 
-
-#Übergabeparameter beim Ausführen
-$beta = $args[0]
-
-#für WSUS 
 Set-StrictMode -Version Latest
 
-#[int], weil wir Strings nicht vergleichen können.
-$winversion = [int](Get-WmiObject -class Win32_OperatingSystem).BuildNumber
-
-#wsuscheck
-$wsuscheck = Get-WindowsFeature | Where-Object {$_.name -eq "UpdateServices"}
-$adcheck = Get-WindowsFeature | Where-Object {$_.name -eq "AD-Domain-Services"}
-$hvcheck = Get-WindowsFeature | Where-Object {$_.name -eq  "Hyper-V"}
-
-$network = [System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain()
-$hostname = hostname
-
-
-#ProgrammHeader und Oberer Text
-$guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.9.1.1"
-if($beta -eq 'beta')
-{
-$guiForm.Text = "Wartungstool - Beta-Args"
-}
-$guiForm.Size = New-Object System.Drawing.Size (1000,710)
-
-$guiLabel = New-Object System.Windows.Forms.Label
-$guiLabel.Location = New-Object System.Drawing.Size (10,10)
-$guiLabel.Size = New-Object System.Drawing.Size (800,30)
-$guiLabel.Text = "Wartungs Toolbox auf " + $hostname +" in "+ $network.name
-$guiLabel.Font = New-Object System.Drawing.Font ("Verdana",9)
-
-
-#Textbox
-$guiLabel3 = New-Object system.windows.Forms.TextBox
-$guiLabel3.Location = New-Object System.Drawing.Size (10,400)
-$guiLabel3.Size = New-Object System.Drawing.size (950,450)
-$guiLabel3.Location = '10,200'
-$guiLabel3.ScrollBars = "Vertical"
-$guiLabel3.Multiline = $true
-$guiLabel3.Text = ""
-$guiLabel3.Font = New-Object System.Drawing.Font ("Verdana",9)
-
-#Functions - Über kurz oder lang sollen ALLE Funktionen in den Header migriert werden damit die Buttons nur den Call beinhalten.
-function eventcheck {
-    param (
-        [int]$days = 30
-    )
-
-    $logs = @("Application", "System")
-    $startDate = (Get-Date).AddDays(-$days)
-    $output = ""
-    
-    foreach ($log in $logs) {
-        $output += "`r`nEvent Log: $log`r`n"
-		$rawevents = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$($startDate.ToUniversalTime().ToString('o'))'] and (Level=2 or Level=3)]]" 
-        $events = $rawevents | Group-Object -Property ID
-        $count = $rawevents.count
-		$output += "Total Events: $count `r`n"
-		$eventInfo = @()
-        foreach ($event in $events) {
-            $firstOccurrence = $event.Group | Sort-Object TimeCreated | Select-Object -First 1
-            $lastOccurrence = $event.Group | Sort-Object TimeCreated -Descending | Select-Object -First 1
-            $eventInfo += [PSCustomObject]@{
-                'ID'              = $event.Name
-                'Level'           = $firstOccurrence.LevelDisplayName
-                'FirstOccurrence' = $firstOccurrence.TimeCreated
-                'LastOccurrence'  = $lastOccurrence.TimeCreated
-                'Total'           = $event.Count
-                'Message'         = $firstOccurrence.Message.Split([Environment]::NewLine, 2)[0]
-            }
-        }
-			$eventInfo = $eventInfo | Sort-Object -Property Total -Descending
-		
-			$eventInfo | ForEach-Object {
-			$output +="`r`n--------------------------`r`n"
-			$output += "ID: $($_.ID), Level: $($_.Level), First Occurrence: $($_.FirstOccurrence), Last Occurrence: $($_.LastOccurrence), Total: $($_.Total), `r`nMessage: $($_.Message)`r`n"
-			}
-        $output += "`n"
-    }
-
-    return $output
-}
-
-
-
-
-#Buttons
-	
-$selectCMD = New-Object System.Windows.Forms.Button
-$selectCMD.Size = New-Object System.Drawing.Size (150,40)
-$selectCMD.Text = 'Export to wtlog.txt'
-$selectCMD.Location = '10,40'
-$selectCMD.Add_Click({
-	$now = date
-	$now = Get-Date -Format dd.MM.yyyy_HH-mm 
-    $WTlog = "wtlog_$now.txt"
-	$guilabel3.Text | Out-File $WTlog
-	$notif = New-Object -ComObject Wscript.Shell
-	$notif.Popup("Ausgabe in $WTLog Gespeichert!")
-    }
-)
-
-
-$selectContentsize = New-Object System.Windows.Forms.Button
-$selectContentsize.Size = New-Object System.Drawing.Size (150,40)
-$selectContentsize.Text = 'WSUS Content'
-$selectContentsize.Location = '10,90'
-
-$selectContentsize.Add_Click({
-if($winversion -lt 9601){
-	if($winversion -gt 9599)
-	{
-		$location = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Update Services\Server\Setup').ContentDir
-	}
-	else {guilabel3.Text += "Nur Kompatibel für Server 2012 R2+" + "`r`n"}
-}
-else
-{
-		$location = Get-ItemPropertyValue -Path 'HKLM:\SOFTWARE\Microsoft\Update Services\Server\Setup' -Name ContentDir
-		
-}
-		$guiLabel3.Text += "ContentFolder: " + $location + "`r`n"
-		$contentsize = (gci $location\WsusContent -Recurse| measure Length -s).sum / 1Gb
-		$guiLabel3.Text += "WSUSContent Size (GB): " + $contentsize.ToString('N2') + " `r`n"
-}
-)
-
-
-$selectCfree = New-Object System.Windows.Forms.Button
-$selectCfree.Size = New-Object System.Drawing.Size (150,40)
-$selectCfree.Text = 'C: Free'
-$selectCfree.Location = '170,40'
-$selectCfree.Add_Click({
-	    $guiLabel3.Text += "C: Free(GB): " + ((Get-Volume C).SizeRemaining / 1Gb).ToString('N2') + "`r`n"
-		
-    }
-)
-
-$selectUptime = New-Object System.Windows.Forms.Button
-$selectUptime.Size = New-Object System.Drawing.Size (150,40)
-$selectUptime.Text = 'Uptime'
-$selectUptime.Location = '170,90'
-$selectUptime.Add_Click({
-	$lastboottime = (Get-WMIObject -Class Win32_OperatingSystem).LastBootUpTime
-	
-	$sysuptime = (Get-Date) - [System.Management.ManagementDateTimeconverter]::ToDateTime($lastboottime)
-    $guiLabel3.Text += "Uptime: " + $sysuptime.days + " Tage " + $sysuptime.hours + " Stunden " + "`r`n"
-    }
-)
-
-$selectClear = New-Object System.Windows.Forms.Button
-$selectClear.Size = New-Object System.Drawing.Size (150,40)
-$selectClear.Text = 'Clear'
-$selectClear.Location = '170,140'
-$selectClear.Add_Click(
-{
-	$guilabel3.Text = ''
-}
-)
-
-
-#Alle Anderen Properties können auch angezeigt werden.
-
-$selectGETAD = New-Object System.Windows.Forms.Button
-$selectGETAD.Size = New-Object System.Drawing.Size (150,40)
-$selectGETAD.Text = 'Get AD Computers'
-$selectGETAD.Location = '330,40'
-$selectGETAD.Add_click({
-	$adcomputers = Get-ADComputer -Filter {OperatingSystem -Like "Windows *"} -Property * | Sort-Object OperatingSystem -Descending
-	ForEach($pc in $adcomputers)
-	{
-		$guilabel3.Text += $pc.OperatingSystem + "`t" + $pc.OperatingSystemVersion + "`t" + "Name: " + $pc.Name  +  "`r`n" 
-	}
-}
-)
-
-$selectSRVUP  = New-Object System.Windows.Forms.Button
-$selectSRVUP.Size = New-Object System.Drawing.Size (150,40)
-$selectSRVUP.Text = 'Get Server Uptimes'
-$selectSRVUP.Location = '330,140'
-$selectSRVUP.Add_click({
-		$servernames = Get-ADComputer -Filter {OperatingSystem -Like "*Server*"} | Sort-Object OperatingSystemVersion -Descending
-		foreach($server in $servernames){
-		if(Test-Connection -ComputerName $server.name -Count 1 -TimeToLive 1 -Quiet)
-		{
-		$Bootupdate = (Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $server.name).LastBootUpTime
-		$Bootuptime = (Get-WMIObject -Class Win32_OperatingSystem -ComputerName $server.Name).LastBootUpTime
-		$uptime = (Get-Date) - [System.Management.ManagementDateTimeconverter]::ToDateTime($Bootuptime)
-		$guilabel3.Text += $server.Name + "`t" + " Last Boot: " + $Bootupdate + " Uptime: " + $uptime.days + " Tag(e)" + "`r`n" 
-		}
-		else{$guilabel3.Text += $server.Name + "`t"  + "nicht erreichbar" + "`r`n" }
-}
-$guilabel3.Text += "`r`n" + "------------------------------------" + "`r`n"}
-)
-
-$selectClientUP  = New-Object System.Windows.Forms.Button
-$selectClientUP.Size = New-Object System.Drawing.Size (150,40)
-$selectClientUP.Text = 'Get Client Uptimes'
-$selectClientUP.Location = '490,140'
-$selectClientUP.Add_click({
-		$clients = Get-ADComputer -Filter {OperatingSystem -Like "Windows*"} -Properties *
-		#ComputerName in PS5.1 evtl. Targetname für ältere
-		foreach($client in $clients){
-		if(Test-Connection -ComputerName $client.name -Count 1 -TimeToLive 1 -Quiet)
-			{
-				$Bootupdate = (gwmi win32_operatingsystem -computer $client.name).LastBootUpTime
-				$Bootuptime = (Get-WMIObject -Class Win32_OperatingSystem -ComputerName $client.Name).LastBootUpTime
-				$uptime = (Get-Date) - [System.Management.ManagementDateTimeconverter]::ToDateTime($Bootuptime)
-				$guilabel3.Text += $Client.Name + "`t"  + "Uptime: " + $uptime.days + " Tag(e)" + "`r`n" 
-			}
-		else{$guilabel3.Text += $Client.Name + "`t"  + "nicht erreichbar" + "`r`n" }
-		
-}
-$guilabel3.Text += "`r`n" + "------------------------------------" + "`r`n"
-}
-)	
-
-$selectUpdatetimes = New-Object System.Windows.Forms.Button
-$selectUpdatetimes.Size = New-Object System.Drawing.Size (150,40)
-$selectUpdatetimes.Text = 'Get Last updates'
-$selectUpdatetimes.Location = '330,90'
-$selectUpdatetimes.Add_click({
-		$lastupdates = Get-HotFix | ?{$_.InstalledOn -gt ((Get-Date).AddDays(-40))} | sort installedon -desc
-		Foreach($updt in $lastupdates)
-		{
-			$guilabel3.Text += "Installed on: " + $updt.InstalledOn + " ID: " + $updt.HotFixID + " Type: " + $updt.Description + "`r`n"
-		}
-}
-)
-
-$selectWSUSSync = New-Object System.Windows.Forms.Button
-$selectWSUSSync.Size = New-Object System.Drawing.Size (150,40)
-$selectWSUSSync.Text = 'WSUS Sync Errors'
-$selectWSUSSync.Location = '490,90'
-$selectWSUSSync.Add_click(
-{
-	[void][reflection.assembly]::LoadWithPartialName("Microsoft.UpdateServices.Administration")
-    
-	$wsus = [Microsoft.UpdateServices.Administration.AdminProxy]::getUpdateServer()
-	$wsus
-	$sub=$wsus.GetSubscription()
-	$failedsync = $sub.GetSynchronizationHistory() | Where-Object Result -eq 'Failed'
-	$guilabel3.Text += "Failed Synchronizations:" + "`r`n"
-	
-	foreach($Fail in $failedsync)
-	{
-			$guilabel3.Text += "`r`n"+"ID: " + $Fail.Id +"`r`n"+ "End Time: " + $Fail.EndTime + "`r`n"+"Error: " + $Fail.Error + "`r`n"
-	}
-	$guilabel3.Text += "`r`n" + "--------------------" + "`r`n" + "`r`n"
-})
-
-
-$selectEventlog = New-Object System.Windows.Forms.Button
-$selectEventlog.Size = New-Object System.Drawing.Size (150,40)
-$selectEventlog.Text = 'Eventlog'
-$selectEventlog.Location = '490,40'
-$selectEventlog.Add_click(
-{
-	Show-EventLog
-})
-
-$selectHVCheck = New-Object System.Windows.Forms.Button
-$selectHVCheck.Size = New-Object System.Drawing.Size (150,40)
-$selectHVCheck.Text = 'Check-Snapshots'
-$selectHVCheck.Location = '650,40'
-$selectHVCheck.Add_click(
-{
-	try {
-    $snapshots = Get-VM | Get-VMSnapshot
-    if ($snapshots) {
-        $guilabel3.Text += $snapshots
-    } else {
-        $guilabel3.Text += "No Snapshots found `r`n"
-    }
-
-    $vmHost = Get-VMHost | Select-Object -ExpandProperty VirtualMachinePath
-    $vmFolderPath = $vmHost.TrimEnd('\')
-
-    $vmFolders = Get-ChildItem -Path $vmFolderPath -Recurse -Directory -ErrorAction Stop
-    $avhdxFilesFound = $false
-    foreach ($folder in $vmFolders) {
-        $avhdxFiles = Get-ChildItem -Path $folder.FullName -Recurse -Filter "*.avhdx" -File -ErrorAction Stop
-        if ($avhdxFiles) {
-            $avhdxFilesFound = $true
-            $guilabel3.Text += "AVHDX files found in VM folder: $($folder.FullName)`r`n"
-            foreach ($avhdxFile in $avhdxFiles) {
-                $guilabel3.Text += "AVHDX file: $($avhdxFile.FullName)`r`n"
-            }
-        }
-    }
-
-    if (!$avhdxFilesFound) {
-        $guilabel3.Text += "No AVHDX files found in any VM folder.`r`n"
-    }
-
-
+# region Environment discovery
+$script:HostInfo = [ordered]@{}
+$script:HostInfo.HostName = $env:COMPUTERNAME
+try {
+    $script:HostInfo.Domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain().Name
 } catch {
-    $Errormsg = "`r`n Error(s): " + $_.Exception.Message
-    $guilabel3.Text += $Errormsg
+    $script:HostInfo.Domain = 'Workgroup'
 }
-})
+$script:HostInfo.BuildNumber = [int](Get-WmiObject -Class Win32_OperatingSystem).BuildNumber
+$script:HostInfo.WsusInstalled = ($null -ne (Get-WindowsFeature | Where-Object { $_.Name -eq 'UpdateServices' -and $_.InstallState -eq 'Installed' }))
+$script:HostInfo.ADInstalled = ($null -ne (Get-WindowsFeature | Where-Object { $_.Name -eq 'AD-Domain-Services' -and $_.InstallState -eq 'Installed' }))
+$script:HostInfo.HVInstalled = ($null -ne (Get-WindowsFeature | Where-Object { $_.Name -eq 'Hyper-V' -and $_.InstallState -eq 'Installed' }))
+# endregion
 
-$selectDFSRCheck = New-Object System.Windows.Forms.Button
-$selectDFSRCheck.Size = New-Object System.Drawing.Size (150,40)
-$selectDFSRCheck.Text = 'Check DFSR Error'
-$selectDFSRCheck.Location = '650,90'
-$selectDFSRCheck.Add_click(
-{
-$eventIDs = 2212, 4012
-$currentDate = Get-Date
-$startDate = $currentDate.AddDays(-180)
-$events = @()
-try{
-foreach ($eventID in $eventIDs) {
-    $eventLogs = Get-WinEvent -FilterHashtable @{Logname='DFS Replication'; ID=$eventID; StartTime=$startDate; EndTime=$currentDate} -ErrorAction SilentlyContinue
-    $events += $eventLogs
+# region Output helpers
+$script:OutputControl = $null
+
+function Write-AppOutput {
+    param(
+        [Parameter(Mandatory)] [string]$Text,
+        [System.Drawing.Color]$Color = [System.Drawing.Color]::Black,
+        [switch]$Bold,
+        [switch]$NewLine
+    )
+    if (-not $script:OutputControl) {
+        return
+    }
+
+    $fontName = $script:OutputControl.Font.Name
+    $fontSize = $script:OutputControl.Font.Size
+    $fontStyle = if ($Bold) { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
+    $font = New-Object System.Drawing.Font($fontName, $fontSize, $fontStyle)
+
+    $script:OutputControl.Invoke({
+        param($rtb, $text, $color, $font, $appendNewLine)
+        $rtb.SelectionStart = $rtb.TextLength
+        $rtb.SelectionLength = 0
+        $rtb.SelectionColor = $color
+        $rtb.SelectionFont = $font
+        $rtb.AppendText($text)
+        if ($appendNewLine) {
+            $rtb.AppendText([Environment]::NewLine)
+        }
+        $rtb.SelectionColor = $rtb.ForeColor
+        $rtb.SelectionFont = $rtb.Font
+        $rtb.ScrollToCaret()
+    }, $script:OutputControl, $Text, $Color, $font, [bool]$NewLine)
 }
+
+function Write-AppLine {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [System.Drawing.Color]$Color = [System.Drawing.Color]::Black,
+        [switch]$Bold
+    )
+    Write-AppOutput -Text $Text -Color $Color -Bold:$Bold -NewLine
 }
-catch{
-	$Errormsg = "`r`nError(s): " + $_.Exception.Message
-	$guilabel3.Text += $Errormsg
+
+function Write-AppError {
+    param(
+        [Parameter(Mandatory)][string]$Message
+    )
+    Write-AppLine -Text $Message -Color [System.Drawing.Color]::Red -Bold
+}
+# endregion
+
+# region Feature functions
+function Get-WSUSContentReport {
+    if (-not $script:HostInfo.WsusInstalled) {
+        throw 'WSUS is not installed on this server.'
+    }
+
+    $regPath = 'HKLM:\SOFTWARE\Microsoft\Update Services\Server\Setup'
+    $contentFolder = $null
+    if ($script:HostInfo.BuildNumber -lt 9601) {
+        if ($script:HostInfo.BuildNumber -gt 9599) {
+            $contentFolder = (Get-ItemProperty -Path $regPath).ContentDir
+        } else {
+            throw 'Only supported on Windows Server 2012 R2 or later.'
+        }
+    } else {
+        $contentFolder = Get-ItemPropertyValue -Path $regPath -Name ContentDir
+    }
+
+    $size = 0
+    if (Test-Path -LiteralPath (Join-Path $contentFolder 'WsusContent')) {
+        $size = (Get-ChildItem -LiteralPath (Join-Path $contentFolder 'WsusContent') -Recurse -ErrorAction Stop | Measure-Object -Property Length -Sum).Sum / 1GB
+    }
+
+    return [pscustomobject]@{
+        ContentFolder = $contentFolder
+        SizeGB        = [Math]::Round($size, 2)
+    }
 }
 
-if ($events.Count -eq 0) {
-    $guilabel3.Text += "`nNo DFS Replication events with IDs 2212 or 4012 were found in the last 180 days.`n"
-} else {
-    $eventCounts = $events | Group-Object -Property ID -NoElement | Sort-Object -Property Count -Descending
+function Get-SystemDriveFreeSpace {
+    param(
+        [string]$DriveLetter = 'C'
+    )
+    $volume = Get-Volume -DriveLetter $DriveLetter
+    return [Math]::Round($volume.SizeRemaining / 1GB, 2)
+}
 
-    $eventOccurrences = $events | Group-Object -Property ID | ForEach-Object {
-        $firstOccurrence = ($_.Group | Sort-Object -Property TimeCreated)[0].TimeCreated
-        $lastOccurrence = ($_.Group | Sort-Object -Property TimeCreated)[-1].TimeCreated
+function Get-SystemUptime {
+    $lastBoot = (Get-WmiObject -Class Win32_OperatingSystem).LastBootUpTime
+    $uptime = (Get-Date) - [System.Management.ManagementDateTimeConverter]::ToDateTime($lastBoot)
+    return $uptime
+}
 
-        New-Object PSObject -Property @{
-            ID = $_.Name
-            Count = $_.Count
-            FirstOccurrence = $firstOccurrence
-            LastOccurrence = $lastOccurrence
+function Get-ADComputers {
+    Get-ADComputer -Filter { OperatingSystem -Like 'Windows *' } -Property OperatingSystem, OperatingSystemVersion |
+        Sort-Object -Property OperatingSystem -Descending
+}
+
+function Get-ServerUptimes {
+    $servers = Get-ADComputer -Filter { OperatingSystem -Like '*Server*' } | Sort-Object OperatingSystemVersion -Descending
+    foreach ($server in $servers) {
+        if (Test-Connection -ComputerName $server.Name -Count 1 -TimeToLive 1 -Quiet) {
+            $bootTime = (Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $server.Name).LastBootUpTime
+            $uptime = (Get-Date) - [System.Management.ManagementDateTimeConverter]::ToDateTime($bootTime)
+            [pscustomobject]@{
+                Name        = $server.Name
+                Reachable   = $true
+                LastBoot    = $bootTime
+                DaysUp      = [int]$uptime.Days
+            }
+        } else {
+            [pscustomobject]@{
+                Name        = $server.Name
+                Reachable   = $false
+                LastBoot    = $null
+                DaysUp      = $null
+            }
         }
     }
-	$guilabel3.Text += "`r`nDFS Replication errors found!`n"
-    $eventOccurrences | Format-Table -Property ID, Count, FirstOccurrence, LastOccurrence -AutoSize
-	$guilabel3.Text += $eventOccurrences
 }
-})
 
-$selectWSUSCleanup = New-Object System.Windows.Forms.Button
-$selectWSUSCleanup.Size = New-Object System.Drawing.Size (150,40)
-$selectWSUSCleanup.Text = 'Shrink WSUS Content'
-$selectWSUSCleanup.Location = '650,140'
-$selectWSUSCleanup.Add_click(
-{
-$guilabel3.Text += "`r`nSuche Superseded Updates`n"
-$supersededupdates = Get-WsusUpdate -Classification All -Approval Approved -Status InstalledOrNotApplicable | where {$_.update.IsSuperseded -eq 'True'}
-$anzahl = $supersededupdates.count
-$message = "$anzahl superseded Updates gefunden. Updates ablehnen?"
-
-$result = [System.Windows.Forms.MessageBox]::Show($message, "Confirmation", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
-
-if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-	$guilabel3.Text += "`r`nDeclining superseded updates`n"
-    $counter = 1
-		ForEach($update in $supersededupdates)
-		{
-		$update | Deny-WsusUpdate
-		Write-Progress -Activity "Declining Updates" -CurrentOperation $counter -PercentComplete (($counter / $anzahl)*100)
-		$counter++
-		}
-	$guilabel3.Text += "`r`n$anzahl Superseded Updates abgelehnt. `r`nUnneeded Content Files werden entfernt`r`n"
-	Get-WsusServer | Invoke-WsusServerCleanup -CleanupUnneededContentFiles
-	$guilabel3.Text += "`r`nWSUS Content verkleinert."
-} else {
-    $guilabel3.Text += "`r`nUpdates wurden nicht abgelehnt. `n"
-
-}
-}
-)
-
-$selectEventoverview = New-Object System.Windows.Forms.Button
-$selectEventoverview.Size = New-Object System.Drawing.Size (150,40)
-$selectEventoverview.Text = 'Event Overview'
-$selectEventoverview.Location = '810,40'
-$selectEventoverview.Add_Click({
-    $output = eventcheck -days 30
-    $guiLabel3.Text += $output
-})
-
-
-#TEMPORÄR
-$selectWSUSErrors = New-Object System.Windows.Forms.Button
-$selectWSUSErrors.Size = New-Object System.Drawing.Size (150,40)
-$selectWSUSErrors.Text = 'WSUS Errors (Admin)'
-$selectWSUSErrors.Location = '10,140'
-$selectWSUSErrors.Add_Click(
-{	
-	$HeaderChars = 0
-	$wsus = [Microsoft.UpdateServices.Administration.AdminProxy]::GetUpdateServer()
-	$computerScope = New-Object Microsoft.UpdateServices.Administration.ComputerTargetScope
-	$updateScope = New-Object Microsoft.UpdateServices.Administration.UpdateScope
-	$summariesComputerFailed = $wsus.GetSummariesPerComputerTarget($updateScope,$computerScope) | Where-Object FailedCount -NE 0 | Sort-Object FailedCount, UnknownCount, NotInstalledCount -Descending
-	$computers = Get-WsusComputer
-	$computersErrorEvents = $wsus.GetUpdateEventHistory([System.DateTime]::Today.AddDays(-7), [System.DateTime]::Today) | Where-Object ComputerId -ne Guid.Empty | Where-Object IsError -eq True
-	
-	If ($summariesComputerFailed -EQ 0 -or $summariesComputerFailed -EQ $null){
-		$guiLabel3.Text += "No computers were found on the WSUS server (" + $wsus.ServerName + ") with updates in error!" + "`r`n"
+function Get-ClientUptimes {
+    $clients = Get-ADComputer -Filter { OperatingSystem -Like 'Windows*' } -Properties *
+    foreach ($client in $clients) {
+        if (Test-Connection -ComputerName $client.Name -Count 1 -TimeToLive 1 -Quiet) {
+            $bootTime = (Get-WmiObject -Class Win32_OperatingSystem -ComputerName $client.Name).LastBootUpTime
+            $uptime = (Get-Date) - [System.Management.ManagementDateTimeConverter]::ToDateTime($bootTime)
+            [pscustomobject]@{
+                Name      = $client.Name
+                Reachable = $true
+                DaysUp    = [int]$uptime.Days
+            }
+        } else {
+            [pscustomobject]@{
+                Name      = $client.Name
+                Reachable = $false
+                DaysUp    = $null
+            }
+        }
     }
-	
-	Else {
-	$guiLabel3.Text += "Computers were found on the WSUS server (" + $wsus.ServerName + ") with failed updates!" +"`r`n"
-	}
-	
-	ForEach ($computerFailed In $summariesComputerFailed) {
-  $computer = $computers | Where-Object Id -eq $computerFailed.ComputerTargetId
+}
 
-  
-  # FullDomainName e IP
-  $outputText = $computer.FullDomainName + " (IP:" + $computer.IPAddress + " - Wsus Id:" + $computerFailed.ComputerTargetId + ")"
-  $guiLabel3.Text += ("`r`n" + $outputText)
+function Get-RecentHotFixes {
+    Get-HotFix | Where-Object { $_.InstalledOn -gt ((Get-Date).AddDays(-40)) } | Sort-Object -Property InstalledOn -Descending
+}
 
-  # Hardware info
-  $outputText = " Hardware info".PadRight($HeaderChars) + ": " + $computer.Make + " " + $computer.Model
-  $guiLabel3.Text += $outputText + "`r`n"
- 
-
-  # Operating system
-  $outputText = " Operating system".PadRight($HeaderChars) + ": " + $computer.OSDescription
-  $guiLabel3.Text += $outputText + "`r`n"
- 
-
-
-  # Update failed
-  $outputText = " Update failed".PadRight($HeaderChars) + ": " + $computerFailed.FailedCount
-  $guiLabel3.Text += $outputText + "`r`n"
- 
-
-  # Update unknown
-  $outputText = " Update unknown".PadRight($HeaderChars) + ": " + $computerFailed.UnknownCount
-  $guiLabel3.Text += $outputText + "`r`n"
- 
-
-  # Update not installed
-  $outputText = " Update not installed".PadRight($HeaderChars) + ": " + $computerFailed.NotInstalledCount
-  $guiLabel3.Text += $outputText + "`r`n"
- 
-
-  # Update installed pending reboot
-  $outputText = " Update installed pending reboot".PadRight($HeaderChars) + ": " + $computerFailed.InstalledPendingRebootCount
-  $guiLabel3.Text += $outputText + "`r`n"
- 
-
-  # Last sync result
-  $outputText = " Last sync result".PadRight($HeaderChars) + ": " + $computer.LastSyncResult
-  $guiLabel3.Text += $outputText + "`r`n"
-  
-
-  # Last sync time
-  $outputText = " Last sync time".PadRight($HeaderChars) + ": " + ($computer.LastSyncTime).ToString()
-  If ($computer.LastSyncTime -LE [System.DateTime]::Today.AddDays(-7)){
-      $guiLabel3.Text += $outputText + "`r`n"
-  }
-  Else {
-    $guiLabel3.Text += $outputText + "`r`n"
-  }
-
-
-  # Last updated
-  $outputText = "Last update".PadRight($HeaderChars) + ": " + ($computerFailed.LastUpdated).ToString()
-  $guiLabel3.Text += $outputText + "`r`n"
-
-  # Failed Updates
-  $computerUpdatesFailed = ($wsus.GetComputerTargets($computerScope) | Where-Object Id -EQ $computerFailed.ComputerTargetId).GetUpdateInstallationInfoPerUpdate($updateScope) | Where UpdateInstallationState -EQ Failed
-
-  $computerUpdateFailedIndex=0
-  ForEach ($update In $computerUpdatesFailed) {
-    If ($computerUpdateFailedIndex -EQ 0){
-      $outputText = " Failed updates".PadRight($HeaderChars) + ": " + "`r`n"
+function Get-WSUSSyncFailures {
+    if (-not $script:HostInfo.WsusInstalled) {
+        throw 'WSUS is not installed on this server.'
     }
-    Else{
-      $outputText = "".PadRight($HeaderChars+2)
+    $wsus = [Microsoft.UpdateServices.Administration.AdminProxy]::GetUpdateServer()
+    $subscription = $wsus.GetSubscription()
+    $subscription.GetSynchronizationHistory() | Where-Object { $_.Result -eq 'Failed' }
+}
+
+function Get-EventOverview {
+    param(
+        [int]$Days = 30
+    )
+    $logs = @('Application', 'System')
+    $startDate = (Get-Date).AddDays(-$Days)
+    foreach ($log in $logs) {
+        $filterTime = $startDate.ToUniversalTime().ToString('o')
+        $rawEvents = Get-WinEvent -LogName $log -FilterXPath "*[System[TimeCreated[@SystemTime>='$filterTime'] and (Level=1 or Level=2 or Level=3)]]"
+        $groups = $rawEvents | Group-Object -Property Id
+        [pscustomobject]@{
+            LogName = $log
+            Total   = $rawEvents.Count
+            Events  = $groups | ForEach-Object {
+                $ordered = $_.Group | Sort-Object -Property TimeCreated
+                $first = $ordered[0]
+                $last = $ordered[-1]
+                [pscustomobject]@{
+                    Id              = $_.Name
+                    Level           = $first.LevelDisplayName
+                    FirstOccurrence = $first.TimeCreated
+                    LastOccurrence  = $last.TimeCreated
+                    Count           = $_.Count
+                    Message         = ($first.Message -split [Environment]::NewLine)[0]
+                }
+            } | Sort-Object -Property Count -Descending
+        }
+    }
+}
+
+function Get-HyperVSnapshotReport {
+    if (-not $script:HostInfo.HVInstalled) {
+        throw 'Hyper-V role is not installed on this server.'
     }
 
-    $outputText += "-" + $wsus.GetUpdate($update.UpdateId).Title + "`r`n"
-    $guiLabel3.Text += $outputText
- 
-    $computerUpdateFailedIndex += 1
-  }
-
-
-}	}
-)
-
-########################################################################################################################
-#################################################Experimental###########################################################
-########################################################################################################################
-$selectWsusreport= New-Object System.Windows.Forms.Button
-$selectWsusreport.Size = New-Object System.Drawing.Size (150,40)
-$selectWsusreport.Text = 'WSUS Quick Report'
-$selectWsusreport.Location = '810,90'
-$selectWsusreport.Add_click({
-		#Report Popup
-$guiForm2 = New-Object System.Windows.Forms.Form
-$guiForm2.Text = "WSUS Quick report"
-$guiForm2.Size = New-Object System.Drawing.Size (880,710)
-
-#Textbox
-$guireportbox = New-Object system.windows.Forms.TextBox
-$guireportbox.Location = New-Object System.Drawing.Size (10,400)
-$guireportbox.Size = New-Object System.Drawing.size (740,400)
-$guireportbox.Location = '10,200'
-$guireportbox.ScrollBars = "Vertical"
-$guireportbox.Multiline = $true
-$guireportbox.Text = ""
-$guireportbox.Font = New-Object System.Drawing.Font ("Verdana",9)
-
-#Get Objects
-	$wsus = [Microsoft.UpdateServices.Administration.AdminProxy]::GetUpdateServer()
-	$computerScope = New-Object Microsoft.UpdateServices.Administration.ComputerTargetScope
-	$updateScope = New-Object Microsoft.UpdateServices.Administration.UpdateScope
-	$summariesComputer = $wsus.GetSummariesPerComputerTarget($updateScope,$computerScope) | Sort-Object FailedCount, UnknownCount, NotInstalledCount -Descending
-	$computers = Get-WsusComputer
-	$computersErrorEvents = $wsus.GetUpdateEventHistory([System.DateTime]::Today.AddDays(-7), [System.DateTime]::Today) | Where-Object ComputerId -ne Guid.Empty | Where-Object IsError -eq True
-
-		
-$comboBox1= New-Object System.Windows.Forms.ComboBox	
-$comboBox2 = New-Object System.Windows.Forms.ComboBox
-$comboBox1.Size = New-Object System.Drawing.Size (400,20)
-#$comboBox11.Location = '10,20'
-$InitialFormWindowState = New-Object System.Windows.Forms.FormWindowState
-	$target = [PSCustomObject]@{
-		ID = ''
-		Name = ''
-	}
-    foreach($computer in $computers)
-	{
-	$comboBox1.Items.Add($computer.FullDomainName)
-	$target.ID = $computer.ID
-	$target.Name = $computer.FullDomainName
-	}
-
-#$selection = $wsus.GetUpdateEventHistory([System.DateTime]::Today.AddDays(-7), [System.DateTime]::Today) | Where-Object ID -eq $combobox1.SelectedItem 
-
-$checkbox1 = New-Object System.Windows.Forms.Checkbox 
-$checkbox1.Location = New-Object System.Drawing.Size(10,30) 
-$checkbox1.Size = New-Object System.Drawing.Size(500,20)
-$checkbox1.Text = "Installed"
-$checkbox1.TabIndex = 4
-
-
-$checkbox2 = New-Object System.Windows.Forms.Checkbox 
-$checkbox2.Location = New-Object System.Drawing.Size(10,50) 
-$checkbox2.Size = New-Object System.Drawing.Size(500,20)
-$checkbox2.Text = "Failed"
-$checkbox2.TabIndex = 3
-
-
-
-$selectdo = New-Object System.Windows.Forms.Button
-$selectdo.Size = New-Object System.Drawing.Size (150,40)
-$selectdo.Text = 'Action'
-$selectdo.Location = '10,70'
-$selectdo.Add_Click({
-	$preselect = Get-WsusComputer | Where-Object FullDomainName -eq $comboBox1.SelectedItem
-	$guireportbox.Text += $preselect.Make + "`r`n" + $preselect.OSDescription + "`r`n" 
-	#$preselect = $target | Where-Object FullDomainName -eq $combobox1.SelectedItem
-	#$select = $summariesComputer | Where-Object Id -eq $preselect.ID
-	
-	#$guireportbox.Text += $select.Make + "`r`n" + $select.OSDescription + "`r`n" 
-	#$guireportbox.Text += "Update failed " + $select.FailedCount
-	#$notif = New-Object -ComObject Wscript.Shell
-	#$notif.Popup("Test")
+    $snapshots = Get-VM | Get-VMSnapshot
+    $vmHostPath = (Get-VMHost | Select-Object -ExpandProperty VirtualMachinePath).TrimEnd('\\')
+    $avhdxInfo = @()
+    if (Test-Path -LiteralPath $vmHostPath) {
+        $vmFolders = Get-ChildItem -Path $vmHostPath -Recurse -Directory -ErrorAction Stop
+        foreach ($folder in $vmFolders) {
+            $files = Get-ChildItem -Path $folder.FullName -Recurse -Filter '*.avhdx' -File -ErrorAction Stop
+            foreach ($file in $files) {
+                $avhdxInfo += [pscustomobject]@{ Folder = $folder.FullName; File = $file.FullName }
+            }
+        }
     }
-)
 
-	
-$GuiForm2.Controls.Add($comboBox1)
-$GuiForm2.Controls.Add($guireportbox)
-$GuiForm2.Controls.Add($comboBox2)
-
-$guiform2.Controls.Add($selectdo)
-$guiform2.Controls.Add($checkbox2)
-$guiform2.Controls.Add($checkbox1)
-
-$guiForm2.ShowDialog() 
-}
-)
-
-########################################################################################################################
-###############################################Experimental Ende########################################################
-########################################################################################################################
-	
-	
-#Buttons platzieren
-$guiForm.Controls.Add($guiLabel)
-$guiForm.Controls.Add($guiLabel3)
-$guiForm.Controls.Add($selectCMD)
-$guiForm.Controls.Add($selectCfree)
-$guiForm.Controls.Add($selectUptime)
-$guiForm.Controls.Add($selectEventlog)
-$guiForm.Controls.Add($selectEventoverview)
-#WSUS Features nur für WSUS Server
-if($wsuscheck.InstallState -eq "Installed")
-{
-$guiForm.Controls.Add($selectContentsize)
-$guiForm.Controls.Add($selectWSUSErrors)
-$guiForm.Controls.Add($selectWSUSSync)
-$guiForm.Controls.Add($selectWSUSCleanup)
+    [pscustomobject]@{
+        Snapshots = $snapshots
+        Avhdx     = $avhdxInfo
+    }
 }
 
-if($hvcheck.InstallState -eq "Installed")
-{
-	$guiForm.Controls.Add($selectHVCheck)
+function Get-DFSRHealth {
+    $eventIds = 2212, 4012
+    $currentDate = Get-Date
+    $startDate = $currentDate.AddDays(-180)
+    $events = @()
+    foreach ($eventId in $eventIds) {
+        $events += Get-WinEvent -FilterHashtable @{ LogName = 'DFS Replication'; Id = $eventId; StartTime = $startDate; EndTime = $currentDate } -ErrorAction SilentlyContinue
+    }
+    return $events
 }
 
-
-$guiForm.Controls.Add($selectClear)
-#AD Features nur für AD Server
-if($adcheck.InstallState -eq "Installed")
-{
-$guiForm.Controls.Add($selectGETAD)
-$guiForm.Controls.Add($selectSRVUP)
-$guiForm.Controls.Add($selectClientUP)
-$guiForm.Controls.Add($selectDFSRCheck)
+function Invoke-WSUSCleanup {
+    if (-not $script:HostInfo.WsusInstalled) {
+        throw 'WSUS is not installed on this server.'
+    }
+    $superseded = Get-WsusUpdate -Classification All -Approval Approved -Status InstalledOrNotApplicable | Where-Object { $_.Update.IsSuperseded }
+    return $superseded
 }
-$guiForm.Controls.Add($selectUpdatetimes)
 
-if($beta -eq 'beta')
-{
-$guiForm.Controls.Add($selectWsusreport)
-
-$guiForm.Controls.Add($selectContentsize)
-$guiForm.Controls.Add($selectWSUSErrors)
-$guiForm.Controls.Add($selectWSUSSync)
-$guiForm.Controls.Add($selectGETAD)
-$guiForm.Controls.Add($selectSRVUP)
-$guiForm.Controls.Add($selectClientUP)
-$guiForm.Controls.Add($selectHVCheck)
+function Get-WSUSErrors {
+    if (-not $script:HostInfo.WsusInstalled) {
+        throw 'WSUS is not installed on this server.'
+    }
+    $wsus = [Microsoft.UpdateServices.Administration.AdminProxy]::GetUpdateServer()
+    $computerScope = New-Object Microsoft.UpdateServices.Administration.ComputerTargetScope
+    $updateScope = New-Object Microsoft.UpdateServices.Administration.UpdateScope
+    $summariesComputerFailed = $wsus.GetSummariesPerComputerTarget($updateScope, $computerScope) | Where-Object { $_.FailedCount -ne 0 } | Sort-Object FailedCount, UnknownCount, NotInstalledCount -Descending
+    $computers = Get-WsusComputer
+    $computerFailures = foreach ($computerFailed in $summariesComputerFailed) {
+        $computer = $computers | Where-Object { $_.Id -eq $computerFailed.ComputerTargetId }
+        $failedUpdates = ($wsus.GetComputerTargets($computerScope) | Where-Object { $_.Id -eq $computerFailed.ComputerTargetId }).GetUpdateInstallationInfoPerUpdate($updateScope) | Where-Object { $_.UpdateInstallationState -eq 'Failed' }
+        $failedUpdateDetails = foreach ($failed in $failedUpdates) {
+            $update = $wsus.GetUpdate($failed.UpdateId)
+            [pscustomobject]@{
+                Title  = $update.Title
+                Update = $update
+            }
+        }
+        [pscustomobject]@{
+            Computer      = $computer
+            Summary       = $computerFailed
+            FailedUpdates = $failedUpdateDetails
+        }
+    }
+    return [pscustomobject]@{
+        ServerName = $wsus.ServerName
+        Failures   = $computerFailures
+    }
 }
-#Starting the GUI
-$guiForm.ShowDialog() 
+
+function Show-WSUSQuickReport {
+    $wsus = [Microsoft.UpdateServices.Administration.AdminProxy]::GetUpdateServer()
+    $computerScope = New-Object Microsoft.UpdateServices.Administration.ComputerTargetScope
+    $updateScope = New-Object Microsoft.UpdateServices.Administration.UpdateScope
+    $computers = Get-WsusComputer
+
+    $reportForm = New-Object System.Windows.Forms.Form
+    $reportForm.Text = 'WSUS Quick Report'
+    $reportForm.Size = New-Object System.Drawing.Size(880,710)
+    $reportForm.StartPosition = 'CenterParent'
+
+    $comboComputers = New-Object System.Windows.Forms.ComboBox
+    $comboComputers.Size = New-Object System.Drawing.Size(400,20)
+    $comboComputers.Location = New-Object System.Drawing.Point(10,10)
+    foreach ($computer in $computers) {
+        [void]$comboComputers.Items.Add($computer.FullDomainName)
+    }
+
+    $checkInstalled = New-Object System.Windows.Forms.CheckBox
+    $checkInstalled.Text = 'Installed'
+    $checkInstalled.Location = New-Object System.Drawing.Point(10,40)
+
+    $checkFailed = New-Object System.Windows.Forms.CheckBox
+    $checkFailed.Text = 'Failed'
+    $checkFailed.Location = New-Object System.Drawing.Point(10,65)
+
+    $actionButton = New-Object System.Windows.Forms.Button
+    $actionButton.Text = 'Action'
+    $actionButton.Size = New-Object System.Drawing.Size(150,40)
+    $actionButton.Location = New-Object System.Drawing.Point(10,95)
+
+    $reportBox = New-Object System.Windows.Forms.RichTextBox
+    $reportBox.Location = New-Object System.Drawing.Point(10,150)
+    $reportBox.Size = New-Object System.Drawing.Size(840,500)
+    $reportBox.ReadOnly = $true
+
+    $actionButton.Add_Click({
+        $reportBox.Clear()
+        $selected = $comboComputers.SelectedItem
+        if (-not $selected) {
+            $reportBox.AppendText("Select a computer first." + [Environment]::NewLine)
+            return
+        }
+        $target = Get-WsusComputer | Where-Object { $_.FullDomainName -eq $selected }
+        if (-not $target) {
+            $reportBox.AppendText("Unable to load computer details." + [Environment]::NewLine)
+            return
+        }
+        $reportBox.AppendText("$($target.FullDomainName)`r`n$($target.Make)`r`n$($target.OSDescription)`r`n")
+        $installations = $target.GetUpdateInstallationInfoPerUpdate($updateScope)
+        if ($checkInstalled.Checked) {
+            $installed = $installations | Where-Object { $_.UpdateInstallationState -eq 'Installed' }
+            $reportBox.AppendText("`r`nInstalled Updates:`r`n")
+            foreach ($item in $installed) {
+                $update = $wsus.GetUpdate($item.UpdateId)
+                $reportBox.AppendText("- $($update.Title)`r`n")
+            }
+        }
+        if ($checkFailed.Checked) {
+            $failed = $installations | Where-Object { $_.UpdateInstallationState -eq 'Failed' }
+            $reportBox.AppendText("`r`nFailed Updates:`r`n")
+            foreach ($item in $failed) {
+                $update = $wsus.GetUpdate($item.UpdateId)
+                $reportBox.AppendText("- $($update.Title)`r`n")
+            }
+        }
+    })
+
+    $reportForm.Controls.Add($comboComputers)
+    $reportForm.Controls.Add($checkInstalled)
+    $reportForm.Controls.Add($checkFailed)
+    $reportForm.Controls.Add($actionButton)
+    $reportForm.Controls.Add($reportBox)
+
+    [void]$reportForm.ShowDialog()
+}
+# endregion
+
+# region GUI creation
+function New-FeatureButton {
+    param(
+        [Parameter(Mandatory)][System.Windows.Forms.Control]$Container,
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][scriptblock]$OnClick
+    )
+    $button = New-Object System.Windows.Forms.Button
+    $button.Size = New-Object System.Drawing.Size(150,40)
+    $button.Text = $Text
+    $button.Margin = New-Object System.Windows.Forms.Padding(5)
+    $button.Add_Click($OnClick)
+    $Container.Controls.Add($button)
+    return $button
+}
+
+function Initialize-App {
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = if ($Beta -eq 'beta') { 'Wartungstool - Beta' } else { 'Wartungstool v0.9.1.1' }
+    $form.Size = New-Object System.Drawing.Size(1000, 720)
+    $form.MinimumSize = New-Object System.Drawing.Size(800, 600)
+    $form.StartPosition = 'CenterScreen'
+
+    $headerLabel = New-Object System.Windows.Forms.Label
+    $headerLabel.Text = "Wartungs Toolbox auf $($script:HostInfo.HostName) in $($script:HostInfo.Domain)"
+    $headerLabel.Font = New-Object System.Drawing.Font('Verdana', 9)
+    $headerLabel.AutoSize = $true
+    $headerLabel.Dock = 'Top'
+    $headerLabel.Padding = New-Object System.Windows.Forms.Padding(10, 10, 10, 5)
+
+    $buttonPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+    $buttonPanel.Dock = 'Top'
+    $buttonPanel.AutoSize = $true
+    $buttonPanel.WrapContents = $true
+    $buttonPanel.AutoSizeMode = 'GrowAndShrink'
+    $buttonPanel.Padding = New-Object System.Windows.Forms.Padding(10)
+
+    $topPanel = New-Object System.Windows.Forms.Panel
+    $topPanel.Dock = 'Top'
+    $topPanel.AutoSize = $true
+    $topPanel.AutoSizeMode = 'GrowAndShrink'
+    $topPanel.Controls.Add($buttonPanel)
+    $topPanel.Controls.Add($headerLabel)
+
+    $outputBox = New-Object System.Windows.Forms.RichTextBox
+    $outputBox.Dock = 'Fill'
+    $outputBox.Font = New-Object System.Drawing.Font('Verdana', 9)
+    $outputBox.Multiline = $true
+    $outputBox.ReadOnly = $true
+    $outputBox.BackColor = [System.Drawing.Color]::White
+    $outputBox.HideSelection = $false
+    $outputBox.ScrollBars = 'Vertical'
+
+    $script:OutputControl = $outputBox
+
+    $form.Controls.Add($outputBox)
+    $form.Controls.Add($topPanel)
+
+    # Buttons
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Export to wtlog.txt' -OnClick {
+        try {
+            $now = Get-Date -Format 'dd.MM.yyyy_HH-mm'
+            $wtLog = "wtlog_$now.txt"
+            $script:OutputControl.Text | Out-File -FilePath $wtLog -Encoding UTF8
+            $notification = New-Object -ComObject Wscript.Shell
+            $notification.Popup("Ausgabe in $wtLog gespeichert!") | Out-Null
+        } catch {
+            Write-AppError "Export failed: $($_.Exception.Message)"
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'C: Free' -OnClick {
+        try {
+            $free = Get-SystemDriveFreeSpace -DriveLetter 'C'
+            Write-AppLine ("C: Free(GB): {0:N2}" -f $free)
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Uptime' -OnClick {
+        try {
+            $uptime = Get-SystemUptime
+            Write-AppLine "Uptime: $($uptime.Days) Tage $($uptime.Hours) Stunden"
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Clear' -OnClick {
+        $script:OutputControl.Clear()
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Get AD Computers' -OnClick {
+        try {
+            $computers = Get-ADComputers
+            foreach ($pc in $computers) {
+                Write-AppLine ("{0}`t{1}`tName: {2}" -f $pc.OperatingSystem, $pc.OperatingSystemVersion, $pc.Name)
+            }
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Get Server Uptimes' -OnClick {
+        try {
+            foreach ($server in Get-ServerUptimes) {
+                if ($server.Reachable) {
+                    Write-AppLine ("{0}`tLast Boot: {1} Uptime: {2} Tag(e)" -f $server.Name, $server.LastBoot, $server.DaysUp)
+                } else {
+                    Write-AppError ("{0}`t nicht erreichbar" -f $server.Name)
+                }
+            }
+            Write-AppLine '------------------------------------'
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Get Client Uptimes' -OnClick {
+        try {
+            foreach ($client in Get-ClientUptimes) {
+                if ($client.Reachable) {
+                    Write-AppLine ("{0}`tUptime: {1} Tag(e)" -f $client.Name, $client.DaysUp)
+                } else {
+                    Write-AppError ("{0}`t nicht erreichbar" -f $client.Name)
+                }
+            }
+            Write-AppLine '------------------------------------'
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Get Last updates' -OnClick {
+        try {
+            foreach ($update in Get-RecentHotFixes) {
+                Write-AppLine ("Installed on: {0:d} ID: {1} Type: {2}" -f $update.InstalledOn, $update.HotFixID, $update.Description)
+            }
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Eventlog' -OnClick {
+        try {
+            Show-EventLog
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    [void](New-FeatureButton -Container $buttonPanel -Text 'Event Overview' -OnClick {
+        try {
+            foreach ($overview in Get-EventOverview -Days 30) {
+                Write-AppLine "Event Log: $($overview.LogName)" -Bold
+                Write-AppLine ("Total Events: {0}" -f $overview.Total)
+                foreach ($event in $overview.Events) {
+                    Write-AppLine '--------------------------'
+                    $details = "ID: {0}, Level: {1}, First Occurrence: {2}, Last Occurrence: {3}, Total: {4}" -f $event.Id, $event.Level, $event.FirstOccurrence, $event.LastOccurrence, $event.Count
+                    $message = "Message: {0}" -f $event.Message
+                    switch ($event.Level) {
+                        'Error' { $color = [System.Drawing.Color]::Red; $bold = $true }
+                        'Critical' { $color = [System.Drawing.Color]::Red; $bold = $true }
+                        'Warning' { $color = [System.Drawing.Color]::Orange; $bold = $false }
+                        default { $color = [System.Drawing.Color]::Black; $bold = $false }
+                    }
+                    Write-AppLine $details -Color $color -Bold:$bold
+                    Write-AppLine $message -Color $color -Bold:$bold
+                }
+                Write-AppLine ''
+            }
+        } catch {
+            Write-AppError $_.Exception.Message
+        }
+    })
+
+    if ($script:HostInfo.HVInstalled) {
+        [void](New-FeatureButton -Container $buttonPanel -Text 'Check-Snapshots' -OnClick {
+            try {
+                $report = Get-HyperVSnapshotReport
+                if ($report.Snapshots) {
+                    Write-AppLine 'Existing Snapshots:' -Bold
+                    foreach ($snapshot in $report.Snapshots) {
+                        Write-AppLine $snapshot.ToString()
+                    }
+                } else {
+                    Write-AppLine 'No Snapshots found'
+                }
+                if ($report.Avhdx.Count -gt 0) {
+                    Write-AppLine 'AVHDX files detected:' -Bold
+                    foreach ($entry in $report.Avhdx) {
+                        Write-AppError "Folder: $($entry.Folder)"
+                        Write-AppError "File: $($entry.File)"
+                    }
+                } else {
+                    Write-AppLine 'No AVHDX files found in any VM folder.'
+                }
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+    }
+
+    if ($script:HostInfo.WsusInstalled) {
+        [void](New-FeatureButton -Container $buttonPanel -Text 'WSUS Content' -OnClick {
+            try {
+                $info = Get-WSUSContentReport
+                Write-AppLine "ContentFolder: $($info.ContentFolder)"
+                Write-AppLine ("WSUSContent Size (GB): {0:N2}" -f $info.SizeGB)
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+
+        [void](New-FeatureButton -Container $buttonPanel -Text 'WSUS Errors (Admin)' -OnClick {
+            try {
+                $report = Get-WSUSErrors
+                if (-not $report.Failures -or $report.Failures.Count -eq 0) {
+                    Write-AppLine "No computers were found on the WSUS server ($($report.ServerName)) with updates in error!"
+                    return
+                }
+                Write-AppLine "Computers were found on the WSUS server ($($report.ServerName)) with failed updates!"
+                foreach ($failure in $report.Failures) {
+                    $computer = $failure.Computer
+                    $summary = $failure.Summary
+                    Write-AppLine ("`r`n{0} (IP:{1} - Wsus Id:{2})" -f $computer.FullDomainName, $computer.IPAddress, $summary.ComputerTargetId)
+                    Write-AppLine ("Make".PadRight(20) + ": " + $computer.Make)
+                    Write-AppLine ("Model".PadRight(20) + ": " + $computer.Model)
+                    Write-AppLine ("OS".PadRight(20) + ": " + $computer.OSDescription)
+                    Write-AppLine ("Last update".PadRight(20) + ": " + $summary.LastUpdated)
+                    $failedUpdates = $failure.FailedUpdates
+                    if ($failedUpdates) {
+                        Write-AppLine ' Failed updates:'
+                        foreach ($update in $failedUpdates) {
+                            Write-AppError "- $($update.Title)"
+                        }
+                    }
+                }
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+
+        [void](New-FeatureButton -Container $buttonPanel -Text 'Shrink WSUS Content' -OnClick {
+            try {
+                $superseded = Invoke-WSUSCleanup
+                $count = $superseded.Count
+                Write-AppLine "Suche Superseded Updates"
+                $message = "$count superseded Updates gefunden. Updates ablehnen?"
+                $result = [System.Windows.Forms.MessageBox]::Show($message, 'Confirmation', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    Write-AppLine 'Declining superseded updates'
+                    $counter = 1
+                    foreach ($update in $superseded) {
+                        $update | Deny-WsusUpdate
+                        Write-Progress -Activity 'Declining Updates' -CurrentOperation $counter -PercentComplete (($counter / $count) * 100)
+                        $counter++
+                    }
+                    Write-AppLine "$count Superseded Updates abgelehnt."
+                    Write-AppLine 'Unneeded Content Files werden entfernt'
+                    Get-WsusServer | Invoke-WsusServerCleanup -CleanupUnneededContentFiles
+                    Write-AppLine 'WSUS Content verkleinert.'
+                } else {
+                    Write-AppLine 'Updates wurden nicht abgelehnt.'
+                }
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+
+        [void](New-FeatureButton -Container $buttonPanel -Text 'WSUS Sync Errors' -OnClick {
+            try {
+                Write-AppLine 'Failed Synchronizations:'
+                foreach ($fail in Get-WSUSSyncFailures) {
+                    Write-AppLine '--------------------------'
+                    Write-AppLine "ID: $($fail.Id)"
+                    Write-AppLine "End Time: $($fail.EndTime)"
+                    Write-AppError "Error: $($fail.Error)"
+                }
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+    }
+
+    if ($script:HostInfo.ADInstalled) {
+        [void](New-FeatureButton -Container $buttonPanel -Text 'Check DFSR Error' -OnClick {
+            try {
+                $events = Get-DFSRHealth
+                if ($events.Count -eq 0) {
+                    Write-AppLine 'No DFS Replication events with IDs 2212 or 4012 were found in the last 180 days.'
+                } else {
+                    Write-AppLine 'DFS Replication errors found!' -Bold -Color ([System.Drawing.Color]::OrangeRed)
+                    $occurrences = $events | Group-Object -Property Id | ForEach-Object {
+                        $sorted = $_.Group | Sort-Object -Property TimeCreated
+                        [pscustomobject]@{
+                            Id = $_.Name
+                            Count = $_.Count
+                            FirstOccurrence = $sorted[0].TimeCreated
+                            LastOccurrence  = $sorted[-1].TimeCreated
+                        }
+                    }
+                    foreach ($occurrence in $occurrences) {
+                        Write-AppLine ("ID: {0} Count: {1} First: {2} Last: {3}" -f $occurrence.Id, $occurrence.Count, $occurrence.FirstOccurrence, $occurrence.LastOccurrence) -Color ([System.Drawing.Color]::OrangeRed)
+                    }
+                }
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+    }
+
+    if ($Beta -eq 'beta' -and $script:HostInfo.WsusInstalled) {
+        [void](New-FeatureButton -Container $buttonPanel -Text 'WSUS Quick Report' -OnClick {
+            try {
+                Show-WSUSQuickReport
+            } catch {
+                Write-AppError $_.Exception.Message
+            }
+        })
+    }
+
+    return $form
+}
+# endregion
+
+$form = Initialize-App
+[void]$form.ShowDialog()
