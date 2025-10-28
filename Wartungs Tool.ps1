@@ -1,6 +1,10 @@
 #Requires -RunAsAdministrator
 
 # Self-elevation for non-admin sessions
+param (
+    [string]$Beta = ''
+)
+
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $admRequest = Read-Host -Prompt "You didn't run this script as an Administrator. Enter [Y] to execute as Admin"
     if ($admRequest -eq 'Y') {
@@ -14,10 +18,6 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [void][Reflection.Assembly]::LoadWithPartialName('Microsoft.UpdateServices.Administration')
 
-param (
-    [string]$Beta
-)
-
 Set-StrictMode -Version Latest
 
 # region Environment discovery
@@ -29,9 +29,26 @@ try {
     $script:HostInfo.Domain = 'Workgroup'
 }
 $script:HostInfo.BuildNumber = [int](Get-WmiObject -Class Win32_OperatingSystem).BuildNumber
-$script:HostInfo.WsusInstalled = ($null -ne (Get-WindowsFeature | Where-Object { $_.Name -eq 'UpdateServices' -and $_.InstallState -eq 'Installed' }))
-$script:HostInfo.ADInstalled = ($null -ne (Get-WindowsFeature | Where-Object { $_.Name -eq 'AD-Domain-Services' -and $_.InstallState -eq 'Installed' }))
-$script:HostInfo.HVInstalled = ($null -ne (Get-WindowsFeature | Where-Object { $_.Name -eq 'Hyper-V' -and $_.InstallState -eq 'Installed' }))
+$script:HostInfo.WsusInstalled = $false
+$script:HostInfo.ADInstalled = $false
+$script:HostInfo.HVInstalled = $false
+
+$featureCommand = Get-Command -Name Get-WindowsFeature -ErrorAction SilentlyContinue
+if ($featureCommand) {
+    try {
+        if (-not (Get-Module -Name ServerManager)) {
+            Import-Module -Name ServerManager -ErrorAction Stop
+        }
+        $features = Get-WindowsFeature
+        $script:HostInfo.WsusInstalled = ($null -ne ($features | Where-Object { $_.Name -eq 'UpdateServices' -and $_.InstallState -eq 'Installed' }))
+        $script:HostInfo.ADInstalled = ($null -ne ($features | Where-Object { $_.Name -eq 'AD-Domain-Services' -and $_.InstallState -eq 'Installed' }))
+        $script:HostInfo.HVInstalled = ($null -ne ($features | Where-Object { $_.Name -eq 'Hyper-V' -and $_.InstallState -eq 'Installed' }))
+    } catch {
+        Write-Verbose "Unable to query Windows Features: $($_.Exception.Message)"
+    }
+} else {
+    Write-Verbose 'Get-WindowsFeature not available; assuming WSUS, AD DS, and Hyper-V roles are not installed.'
+}
 # endregion
 
 # region Output helpers
@@ -40,12 +57,25 @@ $script:OutputControl = $null
 function Write-AppOutput {
     param(
         [Parameter(Mandatory)] [string]$Text,
-        [System.Drawing.Color]$Color = [System.Drawing.Color]::Black,
+        [object]$Color = [System.Drawing.Color]::Black,
         [switch]$Bold,
         [switch]$NewLine
     )
     if (-not $script:OutputControl) {
         return
+    }
+
+    $resolvedColor = if ($Color -is [System.Drawing.Color]) {
+        $Color
+    } elseif ($Color -is [string] -and $Color) {
+        $named = [System.Drawing.Color]::FromName($Color)
+        if ($named.IsKnownColor -or $named.IsNamedColor -or $named.IsSystemColor) {
+            $named
+        } else {
+            [System.Drawing.Color]::Black
+        }
+    } else {
+        [System.Drawing.Color]::Black
     }
 
     $fontName = $script:OutputControl.Font.Name
@@ -66,13 +96,13 @@ function Write-AppOutput {
         $rtb.SelectionColor = $rtb.ForeColor
         $rtb.SelectionFont = $rtb.Font
         $rtb.ScrollToCaret()
-    }, $script:OutputControl, $Text, $Color, $font, [bool]$NewLine)
+    }, $script:OutputControl, $Text, $resolvedColor, $font, [bool]$NewLine)
 }
 
 function Write-AppLine {
     param(
         [Parameter(Mandatory)][string]$Text,
-        [System.Drawing.Color]$Color = [System.Drawing.Color]::Black,
+        [object]$Color = [System.Drawing.Color]::Black,
         [switch]$Bold
     )
     Write-AppOutput -Text $Text -Color $Color -Bold:$Bold -NewLine
@@ -82,7 +112,7 @@ function Write-AppError {
     param(
         [Parameter(Mandatory)][string]$Message
     )
-    Write-AppLine -Text $Message -Color [System.Drawing.Color]::Red -Bold
+    Write-AppLine -Text $Message -Color ([System.Drawing.Color]::Red) -Bold
 }
 # endregion
 
