@@ -73,6 +73,9 @@ To specify the number of days to look back for event logs (default is 30):
 
 <details>
 <summary><b>Changelog</b></summary>
+**v0.9.2**
+- Cosmetic changes/Typos fixed
+- Added a new check to see if the Windows Server Backup Target has been rotated. Only visible on Servers with the Windows Server Backup role
 
 **v0.9.1.1**
 - (Extended) Eventoverview: The total number of events is now also displayed.
@@ -203,6 +206,9 @@ Um die Anzahl der Tage für die Rückschau der Ereignisprotokolle festzulegen (S
 
 <details>
 <summary><b>Changelog</b></summary>
+**v0.9.2**
+- Typos und Kosmetische Fixes
+- Abfrage zur Kontrolle der USB Disk Rotation im Windows Server Backup hinzugefügt. 
 
 **v0.9.1.1**
 - (Erweitert) Eventoverview: Die Gesamtzahl der Events wird nun auch angezeigt.
