@@ -1,6 +1,6 @@
 #Self-Elevate
 If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
-    $ADMRequest = Read-Host -Prompt "You didn't run this script as an Administrator. Enter [Y] to execute as Admin"
+    $ADMRequest = Read-Host -Prompt "You didn't run this script as an Administrator. Execute as Admin? [y/N]"
     If ($ADMRequest -eq "Y" )
 	{	Start-Process powershell.exe -ArgumentList ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f $PSCommandPath) -Verb RunAs
     Exit}
@@ -25,6 +25,7 @@ $winversion = [int](Get-WmiObject -class Win32_OperatingSystem).BuildNumber
 $wsuscheck = Get-WindowsFeature | Where-Object {$_.name -eq "UpdateServices"}
 $adcheck = Get-WindowsFeature | Where-Object {$_.name -eq "AD-Domain-Services"}
 $hvcheck = Get-WindowsFeature | Where-Object {$_.name -eq  "Hyper-V"}
+$wsbcheck = Get-WindowsFeature | Where-Object {$_.name -eq "Windows-Server-Backup"}
 
 $network = [System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain()
 $hostname = hostname
@@ -32,8 +33,8 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.9.1.1"
-if($beta -eq 'beta')
+$guiForm.Text = "Wartungstool v0.9.2"
+if($beta -eq '-beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
 }
@@ -97,7 +98,49 @@ function eventcheck {
     return $output
 }
 
+function backupcheck {
+    $output = ""
+    $rawOutput = wbadmin get versions
+    $backups = @()
+    $currentDate = $null
 
+    foreach ($line in $rawOutput) {
+        if ($line -match "Backup time:\s*(.*)") {
+            $currentDate = $matches[1].Trim()
+        }
+        elseif ($line -match "Backup target:\s*(.*)") {
+            $currentTarget = $matches[1].Trim()
+
+            if ($currentDate) {
+                $backups += [PSCustomObject]@{
+                    Time   = $currentDate
+                    Target = $currentTarget
+                }
+                $currentDate = $null 
+            }
+        }
+    }
+
+    # Analyze the data
+    if ($backups.Count -gt 0) {
+        $latestTarget = $backups[-1].Target
+        $targetBackups = $backups | Where-Object { $_.Target -eq $latestTarget }
+        $count = $targetBackups.Count
+        $firstBackup = $targetBackups[0].Time
+        $lastBackup  = $targetBackups[-1].Time
+        $output += "--------------------------`r`n"
+        $output += "Last backup Target: $latestTarget, Concurrent Backups on Last Target: $count, `r`n"
+		$output += "First: $firstBackup, Last: $lastBackup`r`n"
+		$output += "--------------------------`r`n"
+    } 
+    else {
+        $output += "No backup versions found or wbadmin is not accessible.`r`n"
+    }
+    
+    $output += "`n"
+
+    return $output
+}
 
 
 #Buttons
@@ -400,6 +443,15 @@ $selectEventoverview.Add_Click({
     $guiLabel3.Text += $output
 })
 
+#Wurden die Backup Disks brav rotiert?
+$selectdiskrotation = New-Object System.Windows.Forms.Button
+$selectdiskrotation.Size = New-Object System.Drawing.Size (150,40)
+$selectdiskrotation.Text = 'WSB Disk Check'
+$selectdiskrotation.Location = '810,140'
+$selectdiskrotation.Add_Click({
+    $output = backupcheck
+    $guiLabel3.Text += $output
+})
 
 #TEMPORÄR
 $selectWSUSErrors = New-Object System.Windows.Forms.Button
@@ -503,6 +555,8 @@ $selectWSUSErrors.Add_Click(
 
 }	}
 )
+
+
 
 ########################################################################################################################
 #################################################Experimental###########################################################
@@ -624,6 +678,11 @@ $guiForm.Controls.Add($selectWSUSCleanup)
 if($hvcheck.InstallState -eq "Installed")
 {
 	$guiForm.Controls.Add($selectHVCheck)
+}
+
+if($wsbcheck.InstallState -eq "Installed")
+{
+	$guiForm.Controls.Add($selectdiskrotation)
 }
 
 
