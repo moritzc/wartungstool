@@ -99,8 +99,11 @@ function eventcheck {
 }
 
 function backupcheck {
+    param ()
+
     $output = ""
     $rawOutput = wbadmin get versions
+
     $backups = @()
     $currentDate = $null
 
@@ -110,7 +113,6 @@ function backupcheck {
         }
         elseif ($line -match "Backup target:\s*(.*)") {
             $currentTarget = $matches[1].Trim()
-
             if ($currentDate) {
                 $backups += [PSCustomObject]@{
                     Time   = $currentDate
@@ -121,17 +123,30 @@ function backupcheck {
         }
     }
 
-    # Analyze the data
     if ($backups.Count -gt 0) {
+
         $latestTarget = $backups[-1].Target
-        $targetBackups = $backups | Where-Object { $_.Target -eq $latestTarget }
-        $count = $targetBackups.Count
-        $firstBackup = $targetBackups[0].Time
-        $lastBackup  = $targetBackups[-1].Time
+        
+        $consecutiveBackups = @()
+
+        for ($i = $backups.Count - 1; $i -ge 0; $i--) {
+            if ($backups[$i].Target -eq $latestTarget) {
+
+                $consecutiveBackups += $backups[$i]
+            } else {
+
+                break
+            }
+        }
+
+        $count = $consecutiveBackups.Count
+
+        $lastBackup  = $consecutiveBackups[0].Time
+        $firstBackup = $consecutiveBackups[-1].Time
+
         $output += "--------------------------`r`n"
         $output += "Last backup Target: $latestTarget, Concurrent Backups on Last Target: $count, `r`n"
 		$output += "First: $firstBackup, Last: $lastBackup`r`n"
-		$output += "--------------------------`r`n"
     } 
     else {
         $output += "No backup versions found or wbadmin is not accessible.`r`n"
@@ -141,7 +156,6 @@ function backupcheck {
 
     return $output
 }
-
 
 #Buttons
 	
