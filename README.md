@@ -73,6 +73,8 @@ To specify the number of days to look back for event logs (default is 30):
 
 <details>
 <summary><b>Changelog</b></summary>
+**v0.9.3**  
+- "Get Last updates" now fetches the current build number, checks the release information table from Microsoft and states the availability date for the currently installed OS Version  
 **v0.9.2**
 - Cosmetic changes/Typos fixed
 - Added a new check to see if the Windows Server Backup Target has been rotated. Only visible on Servers with the Windows Server Backup role
@@ -206,6 +208,8 @@ Um die Anzahl der Tage für die Rückschau der Ereignisprotokolle festzulegen (S
 
 <details>
 <summary><b>Changelog</b></summary>
+**v0.9.3**  
+- "Get Last updates" holt sich die aktuelle Build nummer, fragt die release Informationen von Microsoft ab und gibt das Availability Date der momentan installierten Version an.
 **v0.9.2**
 - Typos und Kosmetische Fixes
 - Abfrage zur Kontrolle der USB Disk Rotation im Windows Server Backup hinzugefügt. 
