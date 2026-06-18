@@ -7,7 +7,6 @@ If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 }
 
 
-#Load System Windows Forms (PreReqs)  https://prosystech.nl/powershell-service-desk-ict-tool-gui/
 [reflection.assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
 [reflection.assembly]::LoadWithPartialName("Microsoft.UpdateServices.Administration") | out-null
 
@@ -33,7 +32,7 @@ $hostname = hostname
 
 #ProgrammHeader und Oberer Text
 $guiForm = New-Object System.Windows.Forms.Form
-$guiForm.Text = "Wartungstool v0.9.3"
+$guiForm.Text = "Wartungstool v0.9.3.1"
 if($beta -eq '-beta')
 {
 $guiForm.Text = "Wartungstool - Beta-Args"
@@ -296,6 +295,7 @@ $selectUpdatetimes.Add_click({
 		$guilabel3.Text += "`r`n" + "----------UPDATE STATUS----------" + "`r`n"
 		$lastupdates = Get-HotFix | ?{$_.InstalledOn -gt ((Get-Date).AddDays(-40))} | sort installedon -desc
 		$build = "{2}.{3}" -f ('CurrentMajorVersionNumber','CurrentMinorVersionNumber','CurrentBuild','UBR' | ForEach-Object {Get-ItemPropertyValue -Path 'Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion' -Name $_})
+		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 		$html = Invoke-RestMethod "https://learn.microsoft.com/en-us/windows/release-health/windows-server-release-info"
 		
 		$guilabel3.Text += "Current Build: " + $build + "`r`n" + "Availability Date: " + [regex]::Match($html, "<td>(\d{4}-\d{2}-\d{2})</td>\s*<td>$build</td>").Groups[1].Value + "`r`n"
